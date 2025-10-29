@@ -13,10 +13,10 @@ class DereverbDataset(Dataset):
         """
         self.reverb_files = sorted([os.path.join(reverb_dir, f) 
                                     for f in os.listdir(reverb_dir) 
-                                    if f.endswith('.wav')])
+                                    if f.endswith('.flac')])
         self.clean_files = sorted([os.path.join(clean_dir, f) 
                                    for f in os.listdir(clean_dir) 
-                                   if f.endswith('.wav')])
+                                   if f.endswith('.flac')])
         
         assert len(self.reverb_files) == len(self.clean_files), \
             "Mismatch between reverb and clean files"
