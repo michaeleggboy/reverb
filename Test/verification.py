@@ -86,7 +86,7 @@ def verify_and_cleanup_dataset(dataset_dir, auto_delete=False):
     
     print()
     print("=" * 50)
-    print(f"CLEANUP COMPLETE")
+    print("CLEANUP COMPLETE")
     print(f"Final matched pairs: {len(matching)}")
     print(f"Total files deleted: {deleted_count}")
     print("=" * 50)

@@ -47,7 +47,7 @@ def dereverb_audio(
             print(f"  ✓ Validation loss: {checkpoint['val_loss']:.4f}")
     else:
         model.load_state_dict(checkpoint)
-        print(f"  ✓ Loaded model weights")
+        print("  ✓ Loaded model weights")
     
     model.eval()
     
@@ -66,7 +66,7 @@ def dereverb_audio(
     magnitude, phase = audio_to_spectrogram(audio)
     original_size = magnitude.shape[-2:]
     print(f"  ✓ Original spectrogram: {magnitude.shape}")
-    print(f"  ✓ Saved phase for reconstruction")
+    print("  ✓ Saved phase for reconstruction")
     
     # ===== Resize for Model =====
     print("\n[4/6] Preparing for model...")
@@ -79,7 +79,7 @@ def dereverb_audio(
         magnitude_resized = magnitude_resized.to(device)
         clean_magnitude_resized = model(magnitude_resized)
         clean_magnitude_resized = clean_magnitude_resized.cpu()
-    print(f"  ✓ Predicted clean spectrogram")
+    print("  ✓ Predicted clean spectrogram")
     
     # Resize back to original dimensions
     clean_magnitude = unresize_spectrogram(clean_magnitude_resized, original_size)
