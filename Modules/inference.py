@@ -129,7 +129,7 @@ def dereverb_batch(
     input_dir,
     output_dir,
     model_path,
-    file_extension='*.wav',
+    file_extension='*.flac',
     device='cuda' if torch.cuda.is_available() else 'cpu'
 ):
     """
