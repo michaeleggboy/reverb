@@ -66,8 +66,7 @@ def spectrogram_to_audio(magnitude, phase, n_fft=512, hop_length=256):
         magnitude = F.interpolate(
             magnitude,
             size=target_shape[-2:],
-            mode='bilinear',
-            align_corners=False
+            mode='bilinear'
         )
         
         # Remove batch dim if we added it
@@ -130,8 +129,7 @@ def resize_spectrogram(spec, target_size=(256, 256)):
     resized = F.interpolate(
         spec, 
         size=target_size, 
-        mode='bilinear', 
-        align_corners=False
+        mode='bilinear'
     )
     
     return resized
@@ -151,8 +149,7 @@ def unresize_spectrogram(spec, original_size):
     resized = F.interpolate(
         spec, 
         size=original_size, 
-        mode='bilinear', 
-        align_corners=False
+        mode='bilinear'
     )
     
     return resized
