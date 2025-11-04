@@ -6,6 +6,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import time
 
+
 def train_model(
     train_dataset,
     val_dataset,

@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+
 def audio_to_spectrogram(audio, n_fft=512, hop_length=256):
     """
     Convert audio waveform to spectrogram

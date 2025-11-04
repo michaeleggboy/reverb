@@ -10,6 +10,7 @@ from audio_utils import (
     unresize_spectrogram
 )
 
+
 def dereverb_audio(
     input_audio_path,
     output_audio_path,
