@@ -99,52 +99,49 @@ def dereverb_audio_with_model(
 
 
 def _process_audio(input_path, output_path, model, device, verbose=True):
-    """
-    Internal function to process audio with pre-loaded model
-    
-    Args:
-        input_path: Input audio file path
-        output_path: Output audio file path
-        model: Pre-loaded UNet model
-        device: 'cuda' or 'cpu'
-        verbose: Print progress messages
-    
-    Returns:
-        clean_audio: Processed audio tensor
-        sr: Sample rate
-    """
+    """Internal function to process audio with pre-loaded model"""
     
     # Load audio
     if verbose:
-        print("  [2/6] Loading audio...")
+        print("  Loading audio...")
     audio, sr = torchaudio.load(str(input_path))
-    if verbose:
-        print(f"        Shape: {audio.shape}, SR: {sr} Hz")
     
     # Convert to mono
     if audio.shape[0] > 1:
         audio = audio.mean(dim=0, keepdim=True)
-        if verbose:
-            print(f"        Converted to mono")
     
     # To spectrogram
     if verbose:
-        print("  [3/6] Converting to spectrogram...")
+        print("  Converting to spectrogram...")
     magnitude, phase = audio_to_spectrogram(audio)
     original_size = magnitude.shape[-2:]
-    if verbose:
-        print(f"        Magnitude: {magnitude.shape}")
     
     # Resize
-    if verbose:
-        print("  [4/6] Resizing for model...")
     magnitude_resized = resize_spectrogram(magnitude, (256, 256))
     
     # Predict
     if verbose:
-        print("  [5/6] Processing through U-Net...")
+        print("  Processing through U-Net...")
     with torch.no_grad():
         clean_resized = model(magnitude_resized.to(device)).cpu()
+    
+    # Check for invalid values
+    if torch.isnan(clean_resized).any():
+        if verbose:
+            print("  ⚠️ Replacing NaN values")
+        clean_resized = torch.nan_to_num(clean_resized, nan=0.0)
+    
+    if torch.isinf(clean_resized).any():
+        if verbose:
+            print("  ⚠️ Replacing Inf values")
+        clean_resized = torch.nan_to_num(clean_resized, posinf=5.0, neginf=0.0)
+    
+    # Clamp extreme values
+    max_before = clean_resized.max().item()
+    clean_resized = torch.clamp(clean_resized, min=0.0, max=5.0)
+    
+    if verbose and max_before > 5.0:
+        print(f"  ⚠️ Clamped max value from {max_before:.2f} to 5.0")
     
     # Unresize
     clean_magnitude = unresize_spectrogram(clean_resized, original_size)
@@ -152,7 +149,7 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
     
     # Reconstruct
     if verbose:
-        print("  [6/6] Reconstructing audio...")
+        print("  Converting back to audio...")
     clean_audio = spectrogram_to_audio(clean_magnitude, phase)
     
     # Match length
@@ -166,8 +163,6 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
     max_val = torch.max(torch.abs(clean_audio))
     if max_val > 1.0:
         clean_audio = clean_audio / max_val * 0.99
-        if verbose:
-            print(f"        Normalized (peak: {max_val:.2f})")
     
     clean_audio = torch.clamp(clean_audio, -1.0, 1.0)
     
@@ -181,7 +176,7 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
     torchaudio.save(str(output_path), clean_audio, sr)
     
     if verbose:
-        print(f"        Saved: {output_path.name}")
+        print(f"  ✓ Saved to: {output_path.name}")
     
     return clean_audio, sr
 
