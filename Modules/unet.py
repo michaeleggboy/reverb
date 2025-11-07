@@ -36,7 +36,10 @@ class UNet(nn.Module):
         self.decoder1 = self._double_conv(features[0] * 2, features[0])
         
         # Final output layer
-        self.out = nn.Conv2d(features[0], out_channels, 1)
+        self.out = self.out = nn.Sequential(
+            nn.Conv2d(features[0], out_channels, 1),
+            nn.Softplus()
+            )
     
     def _double_conv(self, in_channels, out_channels):
         return nn.Sequential(
