@@ -1,7 +1,3 @@
-# ==========================================
-# VERIFY_DATASET.PY - With Checkpointing for Integrity Check
-# ==========================================
-
 from pathlib import Path
 import soundfile as sf
 import json
@@ -119,7 +115,9 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
         checkpoint_file = Path(checkpoint_file)
     
     # Get all files to check
-    all_files = list(reverb_dir.glob('*.flac')) + list(clean_dir.glob('*.flac'))
+    reverb_files = sorted(reverb_dir.glob('*.flac'))
+    clean_files = sorted(clean_dir.glob('*.flac'))
+    all_files = reverb_files + clean_files
     total_files = len(all_files)
     
     print(f"Checking integrity of {total_files} files...")
@@ -129,7 +127,7 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
     corrupted = []
     
     if checkpoint_file.exists():
-        print(f"📂 Found integrity checkpoint, resuming...")
+        print("📂 Found integrity checkpoint, resuming...")
         try:
             with open(checkpoint_file, 'r') as f:
                 checkpoint_data = json.load(f)
