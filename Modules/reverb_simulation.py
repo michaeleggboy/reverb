@@ -48,7 +48,6 @@ def create_reverb_from_librispeech(
         checkpoint_file = Path(checkpoint_file)
     
     # ===== COUNT TOTAL SOURCE FILES =====
-    # FIX: Calculate expected total dynamically instead of hardcoding
     print("Counting source files...")
     total_source_files = 0
     for speaker_dir in subset_path.iterdir():
@@ -74,8 +73,6 @@ def create_reverb_from_librispeech(
             with open(checkpoint_file, 'r') as f:
                 checkpoint_data = json.load(f)
                 processed_files = set(checkpoint_data['processed_files'])
-                # FIX: Recalculate sample_idx from processed_files instead of trusting stored count
-                # This ensures consistency if checkpoint was saved mid-file
                 sample_idx = len(processed_files) * rooms_per_audio
             print(f"✓ Resuming from {sample_idx} samples")
             print(f"✓ Already processed {len(processed_files)} source files")
@@ -128,8 +125,6 @@ def create_reverb_from_librispeech(
                     if len(audio.shape) > 1:
                         audio = audio.mean(axis=1)
                     
-                    # FIX: Track samples generated for THIS file only
-                    # Don't increment global counter until file is complete
                     samples_this_file = 0
 
                     # Generate multiple reverberant versions
@@ -170,7 +165,6 @@ def create_reverb_from_librispeech(
                         max_reverb = np.max(np.abs(reverb_audio))
                         max_clean = np.max(np.abs(audio))
                         
-                        # FIX: Check for silent audio before normalization
                         if max_reverb > 0:
                             reverb_audio = reverb_audio / max_reverb * 0.9
                         else:
@@ -190,7 +184,6 @@ def create_reverb_from_librispeech(
                         clean_audio_norm = clean_audio_norm[:min_len]
                         
                         # ===== VALIDATION =====
-                        # FIX: Check for NaN/Inf values that cause issues later
                         if np.isnan(reverb_audio).any() or np.isinf(reverb_audio).any():
                             print("  ⚠️ NaN/Inf in reverb, skipping")
                             continue
@@ -198,7 +191,6 @@ def create_reverb_from_librispeech(
                             print("  ⚠️ NaN/Inf in clean, skipping")
                             continue
                         
-                        # FIX: Ensure valid range and consistent data type
                         reverb_audio = np.clip(reverb_audio, -1.0, 1.0).astype(np.float32)
                         clean_audio_norm = np.clip(clean_audio_norm, -1.0, 1.0).astype(np.float32)
 
@@ -213,14 +205,11 @@ def create_reverb_from_librispeech(
                         samples_this_file += 1
                     
                     # ===== UPDATE PROGRESS AFTER FILE COMPLETE =====
-                    # FIX: Only increment sample_idx and mark file as processed
-                    # after ALL rooms for this file are generated
                     # This ensures checkpoint consistency
                     sample_idx += samples_this_file
                     processed_files.add(file_id)
                     
                     # ===== SAVE CHECKPOINT PERIODICALLY =====
-                    # FIX: Save every 10 complete files (30 samples) instead of every 100 samples
                     # This balances checkpoint frequency vs I/O overhead
                     if len(processed_files) % 10 == 0:
                         _save_checkpoint(
@@ -234,7 +223,6 @@ def create_reverb_from_librispeech(
                         elapsed = time.time() - start_time
                         rate = sample_idx / (elapsed / 60) if elapsed > 0 else 0
                         
-                        # FIX: Use calculated expected_total instead of hardcoded value
                         if rate > 0 and expected_total_samples > 0:
                             remaining = (expected_total_samples - sample_idx) / rate
                             progress_pct = 100 * sample_idx / expected_total_samples
@@ -287,7 +275,6 @@ def _save_checkpoint(checkpoint_file, processed_files, sample_count):
         'timestamp': time.time()
     }
     
-    # FIX: Atomic write - write to temp file first, then rename
     # This prevents corruption if crash happens during write
     temp_file = checkpoint_file.with_suffix('.tmp')
     
