@@ -282,7 +282,6 @@ if __name__ == '__main__':
         generator=torch.Generator().manual_seed(42)  # Reproducible split
     )
     
-    # ===== RECOMMENDED SETTINGS FOR 85K DATASET =====
     model = train_model(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
