@@ -67,11 +67,10 @@ def train_model(
     if use_scheduler:
         scheduler = ReduceLROnPlateau(
             optimizer,
-            mode='min',           # Minimize validation loss
-            factor=0.5,           # Reduce LR by half
-            patience=5,           # Wait 5 epochs before reducing
-            verbose=True,         # Print when LR changes
-            min_lr=1e-6          # Don't go below this
+            mode='min',
+            factor=0.5,
+            patience=5,
+            min_lr=1e-6
         )
         print("✓ Learning rate scheduler enabled")
     
@@ -184,7 +183,7 @@ def train_model(
         if scheduler is not None:
             # Update learning rate based on validation loss
             scheduler.step(avg_val_loss)
-            current_lr = optimizer.param_groups[0]['lr']
+            current_lr = scheduler.get_last_lr()[0]
         else:
             current_lr = learning_rate
         
