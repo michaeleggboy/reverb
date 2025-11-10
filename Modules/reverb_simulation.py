@@ -90,7 +90,6 @@ def create_reverb_from_librispeech(
     print("="*60)
     
     start_time = time.time()
-    last_checkpoint_time = start_time
     
     # ===== MAIN GENERATION LOOP =====
     for speaker_dir in sorted(subset_path.iterdir()):
