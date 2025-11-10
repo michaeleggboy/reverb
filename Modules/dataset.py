@@ -1,6 +1,6 @@
+from pathlib import Path
 import torchaudio
 from torch.utils.data import Dataset
-from pathlib import Path
 from audio_utils import audio_to_spectrogram, resize_spectrogram
 
 

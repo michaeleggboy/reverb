@@ -1,8 +1,8 @@
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 import torchaudio
-from pathlib import Path
-from model import UNet
+from unet import UNet
 from audio_utils import (
     audio_to_spectrogram,
     spectrogram_to_audio,
