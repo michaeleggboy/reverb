@@ -1,11 +1,11 @@
+from pathlib import Path
+import time
 import dataset
 import unet
 import torch
-from pathlib import Path
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-import time
 
 
 def train_model(
