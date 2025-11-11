@@ -15,10 +15,9 @@ def audio_to_spectrogram(audio, n_fft=512, hop_length=256):
         magnitude: Magnitude spectrogram
         phase: Phase spectrogram
     """
-    # Create Hann window
+    
     window = torch.hann_window(n_fft)
     
-    # Compute STFT
     spec = torch.stft(
         audio,
         n_fft=n_fft,
@@ -27,7 +26,6 @@ def audio_to_spectrogram(audio, n_fft=512, hop_length=256):
         return_complex=True
     )
     
-    # Separate magnitude and phase
     magnitude = torch.abs(spec)
     phase = torch.angle(spec)
     
@@ -48,39 +46,32 @@ def spectrogram_to_audio(magnitude, phase, n_fft=512, hop_length=256):
     Returns:
         audio: Reconstructed audio waveform
     """
-    
-    # ===== CRITICAL: Ensure exact shape match =====
+
     if magnitude.shape != phase.shape:
         print("  ⚠️ Shape mismatch detected - fixing...")
         print(f"     Magnitude: {magnitude.shape}")
         print(f"     Phase: {phase.shape}")
         
-        # Force magnitude to match phase dimensions exactly
         target_shape = phase.shape
         
-        # Add batch dim if needed for interpolation
         needs_batch = magnitude.dim() == 3
         if needs_batch:
             magnitude = magnitude.unsqueeze(0)
         
-        # Resize to match phase
         magnitude = F.interpolate(
             magnitude,
             size=target_shape[-2:],
             mode='bilinear'
         )
-        
-        # Remove batch dim if we added it
+
         if needs_batch:
             magnitude = magnitude.squeeze(0)
         
         print(f"     Fixed to: {magnitude.shape}")
     
-    # Final verification
     assert magnitude.shape == phase.shape, \
         f"Shape mismatch after fix: magnitude {magnitude.shape} vs phase {phase.shape}"
     
-    # Check for invalid values
     if torch.isnan(magnitude).any() or torch.isinf(magnitude).any():
         print("  ⚠️ NaN/Inf in magnitude - replacing with zeros")
         magnitude = torch.nan_to_num(magnitude, nan=0.0, posinf=1.0, neginf=0.0)
@@ -89,16 +80,12 @@ def spectrogram_to_audio(magnitude, phase, n_fft=512, hop_length=256):
         print("  ⚠️ NaN/Inf in phase - replacing with zeros")
         phase = torch.nan_to_num(phase, nan=0.0, posinf=3.14, neginf=-3.14)
     
-    # Ensure magnitude is non-negative
     magnitude = torch.clamp(magnitude, min=0.0)
     
-    # Reconstruct complex spectrogram using polar form
     complex_spec = magnitude * torch.exp(1j * phase)
     
-    # Create Hann window
     window = torch.hann_window(n_fft)
     
-    # Inverse STFT
     audio = torch.istft(
         complex_spec,
         n_fft=n_fft,
@@ -120,13 +107,12 @@ def resize_spectrogram(spec, target_size=(256, 256)):
     Returns:
         Resized spectrogram
     """
-    # Ensure correct dimensions [batch, channels, height, width]
+
     if spec.dim() == 2:
         spec = spec.unsqueeze(0).unsqueeze(0)  # [H, W] -> [1, 1, H, W]
     elif spec.dim() == 3:
         spec = spec.unsqueeze(0)  # [C, H, W] -> [1, C, H, W]
     
-    # Resize
     resized = F.interpolate(
         spec, 
         size=target_size, 
@@ -147,6 +133,7 @@ def unresize_spectrogram(spec, original_size):
     Returns:
         Resized spectrogram
     """
+
     resized = F.interpolate(
         spec, 
         size=original_size, 
