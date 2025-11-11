@@ -27,7 +27,7 @@ class DereverbDataset(Dataset):
     
     def __getitem__(self, idx):
         # Load audio
-        reverb_audio, sr = torchaudio.load(str(self.reverb_files[idx]))
+        reverb_audio, _ = torchaudio.load(str(self.reverb_files[idx]))
         clean_audio, _ = torchaudio.load(str(self.clean_files[idx]))
         
         # Compute spectrograms (magnitude only, phase not needed for training)
