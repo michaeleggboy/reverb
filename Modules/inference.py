@@ -35,7 +35,6 @@ def dereverb_audio(
     print(f"Input: {input_audio_path}")
     print(f"Output: {output_audio_path}")
     
-    # Load model
     print("\n[1/6] Loading model...")
     model = UNet(in_channels=1, out_channels=1).to(device)
     checkpoint = torch.load(model_path, map_location=device)
@@ -51,7 +50,6 @@ def dereverb_audio(
     
     model.eval()
     
-    # Process audio
     clean_audio, sr = _process_audio(input_audio_path, output_audio_path, model, device, verbose=True)
     
     print("\n" + "="*60)
@@ -86,7 +84,6 @@ def dereverb_audio_with_model(
     if verbose:
         print(f"Processing: {Path(input_audio_path).name}")
     
-    # Process audio
     clean_audio, sr = _process_audio(
         input_audio_path, 
         output_audio_path, 
@@ -99,33 +96,27 @@ def dereverb_audio_with_model(
 
 
 def _process_audio(input_path, output_path, model, device, verbose=True):
-    """Internal function to process audio with pre-loaded model"""
-    
-    # Load audio
+    """Internal function to process audio with pre-loaded model""" 
+
     if verbose:
         print("  Loading audio...")
     audio, sr = torchaudio.load(str(input_path))
     
-    # Convert to mono
     if audio.shape[0] > 1:
         audio = audio.mean(dim=0, keepdim=True)
     
-    # To spectrogram
     if verbose:
         print("  Converting to spectrogram...")
     magnitude, phase = audio_to_spectrogram(audio)
     original_size = magnitude.shape[-2:]
     
-    # Resize
     magnitude_resized = resize_spectrogram(magnitude, (256, 256))
     
-    # Predict
     if verbose:
         print("  Processing through U-Net...")
     with torch.no_grad():
         clean_resized = model(magnitude_resized.to(device)).cpu()
     
-    # Check for invalid values
     if torch.isnan(clean_resized).any():
         if verbose:
             print("  ⚠️ Replacing NaN values")
@@ -136,37 +127,31 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
             print("  ⚠️ Replacing Inf values")
         clean_resized = torch.nan_to_num(clean_resized, posinf=5.0, neginf=0.0)
     
-    # Clamp extreme values
     max_before = clean_resized.max().item()
     clean_resized = torch.clamp(clean_resized, min=0.0, max=5.0)
     
     if verbose and max_before > 5.0:
         print(f"  ⚠️ Clamped max value from {max_before:.2f} to 5.0")
     
-    # Unresize
     clean_magnitude = unresize_spectrogram(clean_resized, original_size)
     clean_magnitude = clean_magnitude.squeeze(0)
     
-    # Reconstruct
     if verbose:
         print("  Converting back to audio...")
     clean_audio = spectrogram_to_audio(clean_magnitude, phase)
     
-    # Match length
     if clean_audio.shape[-1] > audio.shape[-1]:
         clean_audio = clean_audio[..., :audio.shape[-1]]
     elif clean_audio.shape[-1] < audio.shape[-1]:
         padding = audio.shape[-1] - clean_audio.shape[-1]
         clean_audio = F.pad(clean_audio, (0, padding))
     
-    # Normalize
     max_val = torch.max(torch.abs(clean_audio))
     if max_val > 1.0:
         clean_audio = clean_audio / max_val * 0.99
     
     clean_audio = torch.clamp(clean_audio, -1.0, 1.0)
     
-    # Save
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -207,9 +192,7 @@ def dereverb_batch(
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True, parents=True)
     
-    # Get audio files based on extension
     if file_extension is None:
-        # Get all common audio formats
         audio_files = []
         for ext in ['*.wav', '*.flac', '*.mp3', '*.ogg']:
             audio_files.extend(list(input_path.glob(ext)))
@@ -218,7 +201,6 @@ def dereverb_batch(
             print(f"No audio files found in {input_dir}")
             return
     else:
-        # Get specific extension only
         audio_files = list(input_path.glob(file_extension))
         
         if len(audio_files) == 0:
@@ -229,7 +211,6 @@ def dereverb_batch(
     print(f"Output format: {output_format}")
     print("="*60)
     
-    # Load model once
     print(f"\nLoading model on {device}...")
     model = UNet(in_channels=1, out_channels=1).to(device)
     checkpoint = torch.load(model_path, map_location=device)
@@ -250,12 +231,10 @@ def dereverb_batch(
     success_count = 0
     error_count = 0
     
-    # Process each file with pre-loaded model
     for i, audio_file in enumerate(audio_files):
         if verbose:
             print(f"\n[{i+1}/{len(audio_files)}] {audio_file.name}")
         
-        # Determine output extension
         if output_format == 'match':
             output_ext = audio_file.suffix
         elif output_format == 'flac':
@@ -267,7 +246,6 @@ def dereverb_batch(
         
         output_file = output_path / f"clean_{audio_file.stem}{output_ext}"
         
-        # Skip if already processed
         if output_file.exists():
             if verbose:
                 print("  ⏭️  Skipping (already exists)")
@@ -275,7 +253,6 @@ def dereverb_batch(
             continue
         
         try:
-            # Use pre-loaded model
             dereverb_audio_with_model(
                 audio_file,
                 output_file,
@@ -288,7 +265,6 @@ def dereverb_batch(
             if verbose:
                 print(f"  ✓ Saved as {output_ext}")
             
-            # Progress update every 50 files
             if verbose and (i + 1) % 50 == 0:
                 pct = 100 * (i + 1) / len(audio_files)
                 print(f"\n📊 Progress: {i+1}/{len(audio_files)} ({pct:.1f}%)")
