@@ -286,40 +286,11 @@ def dereverb_batch(
 
 if __name__ == '__main__':
     
-    # Example 1: Process single file
-    dereverb_audio(
-        input_audio_path='reverberant_speech.flac',
-        output_audio_path='clean_speech.flac',
-        model_path='checkpoints/best_model.pth',
+    dereverb_batch(
+        input_dir=f'./scratch/{$USER}/reverb_dataset/reverb',
+        output_dir=f'./scratch/{$USER}/reverb_dataset/clean',
+        model_path=f'./scratch/{$USER}/checkpoints/best_model.pth',
+        file_extension=None,
+        output_format='wav',
         device='cuda'
     )
-    
-    # Example 2: Process all audio files, save as FLAC
-    # dereverb_batch(
-    #     input_dir='./reverb',
-    #     output_dir='./clean',
-    #     model_path='checkpoints/best_model.pth',
-    #     file_extension=None,      # All formats
-    #     output_format='flac',     # Save as FLAC
-    #     device='cuda'
-    # )
-    
-    # Example 3: Process only FLAC files, match format
-    # dereverb_batch(
-    #     input_dir='./reverb',
-    #     output_dir='./clean',
-    #     model_path='checkpoints/best_model.pth',
-    #     file_extension='*.flac',  # Only FLAC
-    #     output_format='match',    # Keep as FLAC
-    #     device='cuda'
-    # )
-    
-    # Example 4: Process FLAC files, output as WAV
-    # dereverb_batch(
-    #     input_dir='./reverb',
-    #     output_dir='./clean',
-    #     model_path='checkpoints/best_model.pth',
-    #     file_extension='*.flac',  # FLAC input
-    #     output_format='wav',      # WAV output
-    #     device='cuda'
-    # )
