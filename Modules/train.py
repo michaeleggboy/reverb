@@ -201,6 +201,7 @@ def train_model(
         # Update scheduler
         if scheduler:
             scheduler.step(avg_val_loss)
+            print(f"  ✓ LR adjusted to: {optimizer.param_groups[0]['lr']:.6f}")
         
         # Print epoch summary
         epoch_time = time.time() - epoch_start
@@ -228,6 +229,7 @@ def train_model(
         
         if (epoch + 1) % save_every == 0:
             torch.save(checkpoint_data, checkpoint_dir / f'checkpoint_epoch_{epoch+1}.pth')
+            print(f"  ✓ Checkpoint saved for epoch {epoch+1}")
         print("\n")
 
     print("\n" + "="*60)
