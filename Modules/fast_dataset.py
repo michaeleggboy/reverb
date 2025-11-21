@@ -12,5 +12,5 @@ class PrecomputedDataset(Dataset):
         return len(self.spec_files)
     
     def __getitem__(self, idx):
-        data = torch.load(self.spec_files[idx])
+        data = torch.load(self.spec_files[idx], weights_only=False)
         return data['reverb'], data['clean']
