@@ -103,10 +103,10 @@ def train_model(
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         best_val_loss = checkpoint.get('val_loss', float('inf'))
-        print(f"✓ Resumed from epoch {checkpoint['epoch']}")
+        print(f"✓ Resumed from epoch {checkpoint['epoch'] + 1}")
 
     print("\n" + "="*60)
-    print(f"Training from epoch {start_epoch+1} to {num_epochs}")
+    print(f"Training from epoch {start_epoch + 1} to {num_epochs}")
     print(f"Batch size: {batch_size}, LR: {learning_rate}")
     print("="*60 + "\n")
     
@@ -114,7 +114,7 @@ def train_model(
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-        print("✓ cuDNN benchmark enabled")
+        print("✓ cuDNN benchmark enabled\n")
 
     # Training loop
     for epoch in range(start_epoch, num_epochs):
@@ -270,7 +270,7 @@ if __name__ == '__main__':
         val_dataset=val_dataset,
         num_epochs=50,
         batch_size=64,
-        learning_rate=1e-4,
+        learning_rate=2e-4,
         device='cuda',
         checkpoint_dir='/scratch/egbueze.m/checkpoints',
         save_every=10,
