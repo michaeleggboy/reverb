@@ -269,7 +269,7 @@ if __name__ == '__main__':
         batch_size=64,
         learning_rate=1e-4,
         device='cuda',
-        checkpoint_dir=Path('/scratch/egbueze.m/checkpoints'),
+        checkpoint_dir='/scratch/egbueze.m/checkpoints',
         save_every=10,
         accumulation_steps=2,
         use_amp=False,
