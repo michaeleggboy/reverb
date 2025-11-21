@@ -42,7 +42,7 @@ def train_model(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=2,
+        num_workers=1,
         pin_memory=True if device == 'cuda' else False,
         persistent_workers=True if device == 'cuda' else False,
         prefetch_factor=2
@@ -52,7 +52,7 @@ def train_model(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=1,
         pin_memory=True if device == 'cuda' else False,
         persistent_workers=True if device == 'cuda' else False,
         prefetch_factor=2
