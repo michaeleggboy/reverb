@@ -5,10 +5,10 @@ from tqdm import tqdm
 from audio_utils import audio_to_spectrogram, resize_spectrogram
 
 
-def precompute_all_spectrograms():
-    reverb_dir = Path('/scratch/egbueze.m/reverb_dataset/reverb')
-    clean_dir = Path('/scratch/egbueze.m/reverb_dataset/clean')
-    output_dir = Path('/scratch/egbueze.m/precomputed_specs')
+def precompute_all_spectrograms(data_dir, output_dir):
+    reverb_dir = Path(data_dir) / 'reverb'
+    clean_dir = Path(data_dir) / 'clean'
+    output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     
     reverb_files = sorted(list(reverb_dir.glob('*.flac')))
@@ -34,4 +34,5 @@ def precompute_all_spectrograms():
     print(f"Saved to {output_dir}")
 
 if __name__ == '__main__':
-    precompute_all_spectrograms()
+    precompute_all_spectrograms(data_dir='/scratch/egbueze.m/reverb_dataset',
+                                output_dir='/scratch/egbueze.m/precomputed_specs')
