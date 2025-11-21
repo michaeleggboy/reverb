@@ -64,20 +64,20 @@ def train_model(
     # Initialize model
     print("\nInitializing model...")
     model = unet.UNet(in_channels=1, out_channels=1).to(device)
-
-    if hasattr(torch, 'compile'):
-        print("Compiling model (takes 30-60 seconds)...")
-        model = torch.compile(model, mode="reduce-overhead")
     
-        # Trigger compilation with dummy forward pass
-        dummy = torch.randn(1, 1, 256, 256).to(device)
-        with torch.no_grad():
-            _ = model(dummy)
-        del dummy
-        torch.cuda.empty_cache()
-        print("✓ Model compiled")
-    else:
-        print("torch.compile not available (need PyTorch 2.0+)")
+    # if hasattr(torch, 'compile'):
+    #     print("Compiling model (takes 30-60 seconds)...")
+    #     model = torch.compile(model, mode="reduce-overhead")
+    
+    #     # Trigger compilation with dummy forward pass
+    #     dummy = torch.randn(1, 1, 256, 256).to(device)
+    #     with torch.no_grad():
+    #         _ = model(dummy)
+    #     del dummy
+    #     torch.cuda.empty_cache()
+    #     print("✓ Model compiled")
+    # else:
+    #     print("torch.compile not available (need PyTorch 2.0+)")
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(
@@ -119,7 +119,7 @@ def train_model(
     # Training loop
     for epoch in range(start_epoch, num_epochs):
         epoch_start = time.time()
-        
+    
         # Training
         model.train()
         train_loss = 0
@@ -135,46 +135,67 @@ def train_model(
             if clean_spec.dim() == 3:
                 clean_spec = clean_spec.unsqueeze(1)
             
-            optimizer.zero_grad()
+            # Don't zero grad every batch when accumulating
+            if batch_idx % accumulation_steps == 0:
+                optimizer.zero_grad()
             
             if scaler:
                 with autocast("cuda"):
                     pred_spec = model(reverb_spec)
                     loss = criterion(pred_spec, clean_spec)
+                    loss = loss / accumulation_steps
                 scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
+                
+                if (batch_idx + 1) % accumulation_steps == 0:
+                    scaler.step(optimizer)
+                    scaler.update()
+                    optimizer.zero_grad()
             else:
                 pred_spec = model(reverb_spec)
                 loss = criterion(pred_spec, clean_spec)
+                loss = loss / accumulation_steps
                 loss.backward()
-                optimizer.step()
+                
+                if (batch_idx + 1) % accumulation_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
             
-            train_loss += loss.item()
-            train_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+            train_loss += loss.item() * accumulation_steps
+            train_pbar.set_postfix({'loss': f'{loss.item() * accumulation_steps:.4f}'})
         
         avg_train_loss = train_loss / len(train_loader)
         
+        # Handle remaining gradients
+        if (len(train_loader) % accumulation_steps) != 0:
+            if scaler and scaler.get_scale() != 0:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+            optimizer.zero_grad()   
+
         # Validation
         model.eval()
         val_loss = 0
         val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Val")
-        
+            
         with torch.no_grad():
             for reverb_spec, clean_spec in val_pbar:
                 reverb_spec = reverb_spec.to(device, non_blocking=True)
                 clean_spec = clean_spec.to(device, non_blocking=True)
-                
+                    
                 if reverb_spec.dim() == 3:
                     reverb_spec = reverb_spec.unsqueeze(1)
                 if clean_spec.dim() == 3:
                     clean_spec = clean_spec.unsqueeze(1)
-                
+                    
                 pred_spec = model(reverb_spec)
                 loss = criterion(pred_spec, clean_spec)
                 val_loss += loss.item()
                 val_pbar.set_postfix({'val_loss': f'{loss.item():.4f}'})
-        
+            
         avg_val_loss = val_loss / len(val_loader)
         
         # Update scheduler
@@ -244,11 +265,12 @@ if __name__ == '__main__':
     model = train_model(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
-        num_epochs=100,
-        batch_size=128,
-        learning_rate=2e-3,
+        num_epochs=50,
+        batch_size=64,
+        learning_rate=1e-4,
         device='cuda',
         checkpoint_dir=Path('/scratch/egbueze.m/checkpoints'),
         save_every=10,
-        use_amp=True,
+        accumulation_steps=2,
+        use_amp=False,
     )
