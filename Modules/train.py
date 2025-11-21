@@ -201,7 +201,7 @@ def train_model(
         # Update scheduler
         if scheduler:
             scheduler.step(avg_val_loss)
-            print(f"  ✓ LR adjusted to: {optimizer.param_groups[0]['lr']:.6f}")
+            print(f"LR: {optimizer.param_groups[0]['lr']:.6f}")
         
         # Print epoch summary
         epoch_time = time.time() - epoch_start
