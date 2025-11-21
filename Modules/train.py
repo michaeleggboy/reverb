@@ -204,7 +204,7 @@ def train_model(
         
         # Print epoch summary
         epoch_time = time.time() - epoch_start
-        print(f"\n[Epoch {epoch+1}/{num_epochs}] "
+        print(f"[Epoch {epoch+1}/{num_epochs}] "
               f"Train Loss: {avg_train_loss:.4f} | "
               f"Val Loss: {avg_val_loss:.4f} | "
               f"Time: {epoch_time:.1f}s | "
@@ -228,7 +228,8 @@ def train_model(
         
         if (epoch + 1) % save_every == 0:
             torch.save(checkpoint_data, checkpoint_dir / f'checkpoint_epoch_{epoch+1}.pth')
-    
+        print("\n")
+
     print("\n" + "="*60)
     print("🎉 TRAINING COMPLETE!")
     print(f"Best val loss: {best_val_loss:.4f}")
