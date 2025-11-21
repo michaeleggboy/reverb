@@ -259,8 +259,8 @@ def _save_checkpoint(checkpoint_file, processed_files, sample_count):
 if __name__ == '__main__':
 
     create_reverb_from_librispeech(
-        librispeech_root=f'./scratch/{$USER}/librispeech/LibriSpeech',
-        output_dir=f'./scratch/{$USER}/reverb_dataset',
+        librispeech_root='/scratch/egbueze.m/librispeech/LibriSpeech',
+        output_dir='/scratch/egbueze.m/reverb_dataset',
         subset='train-clean-100',  # ~100 hours
         rooms_per_audio=3  # 3 different rooms per utterance
     )

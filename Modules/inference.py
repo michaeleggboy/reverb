@@ -287,9 +287,9 @@ def dereverb_batch(
 if __name__ == '__main__':
     
     dereverb_batch(
-        input_dir=f'./scratch/{$USER}/reverb_dataset/reverb',
-        output_dir=f'./scratch/{$USER}/reverb_dataset/clean',
-        model_path=f'./scratch/{$USER}/checkpoints/best_model.pth',
+        input_dir='/scratch/egbueze.m/reverb_dataset/reverb',
+        output_dir='/scratch/egbueze.m/reverb_dataset/clean',
+        model_path='/scratch/egbueze.m/checkpoints/best_model.pth',
         file_extension=None,
         output_format='wav',
         device='cuda'

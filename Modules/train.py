@@ -382,8 +382,8 @@ def train_model(
 
 
 if __name__ == '__main__':
-    data_dir = Path(f'./scratch/{$USER}/reverb_dataset')
-    checkpoint_dir = Path(f'./scratch/{$USER}/checkpoints')
+    data_dir = Path('/scratch/egbueze.m/reverb_dataset')
+    checkpoint_dir = Path('/scratch/egbueze.m/checkpoints')
 
     print("Loading dataset...")
     full_dataset = dataset.DereverbDataset(
