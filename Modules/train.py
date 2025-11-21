@@ -65,6 +65,20 @@ def train_model(
     print("\nInitializing model...")
     model = unet.UNet(in_channels=1, out_channels=1).to(device)
 
+    if hasattr(torch, 'compile'):
+        print("Compiling model (takes 30-60 seconds)...")
+        model = torch.compile(model, mode="reduce-overhead")
+    
+        # Trigger compilation with dummy forward pass
+        dummy = torch.randn(1, 1, 256, 256).to(device)
+        with torch.no_grad():
+            _ = model(dummy)
+        del dummy
+        torch.cuda.empty_cache()
+        print("✓ Model compiled")
+    else:
+        print("torch.compile not available (need PyTorch 2.0+)")
+
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(
         model.parameters(),
