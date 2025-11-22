@@ -163,6 +163,7 @@ def train_model(
             
             train_loss += loss.item() * accumulation_steps
             train_pbar.set_postfix({'loss': f'{loss.item() * accumulation_steps:.4f}'})
+            print("")
         
         avg_train_loss = train_loss / len(train_loader)
         
