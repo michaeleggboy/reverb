@@ -274,5 +274,5 @@ if __name__ == '__main__':
         checkpoint_dir='/scratch/egbueze.m/checkpoints',
         save_every=10,
         accumulation_steps=2,
-        use_amp=False,
+        use_amp=False
     )
