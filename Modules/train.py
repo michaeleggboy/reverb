@@ -107,7 +107,7 @@ def train_model(
 
     print("\n" + "="*60)
     print(f"Training from epoch {start_epoch + 1} to {num_epochs}")
-    print(f"Batch size: {batch_size}, LR: {learning_rate}")
+    print(f"Batch size: {batch_size}, LR: {optimizer.param_groups[0]['lr']:.6f}, accumulation steps: {accumulation_steps}")
     print("="*60 + "\n")
     
     if device == 'cuda':
