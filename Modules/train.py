@@ -23,8 +23,8 @@ def train_model(
     use_scheduler=True,
     accumulation_steps=1,
     use_amp=True,
-    resume_epoch=None,  # Specify exact epoch to resume from
-    force_resume=False,  # Force resume even if latest checkpoint is newer
+    resume_epoch=None,
+    force_resume=False
 ):
     """Train the U-Net model with pre-computed spectrograms"""
     
@@ -38,7 +38,6 @@ def train_model(
 
     print("\nCreating DataLoaders...")
     
-    # Optimized for pre-computed data
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -81,6 +80,15 @@ def train_model(
     best_val_loss = float('inf')
     start_epoch = 0
     
+    # Check for existing best model to know what we need to beat
+    best_model_path = checkpoint_dir / 'best_model.pth'
+    if best_model_path.exists():
+        best_checkpoint = torch.load(best_model_path, map_location=device)
+        existing_best_loss = best_checkpoint.get('val_loss', float('inf'))
+        existing_best_epoch = best_checkpoint.get('epoch', -1) + 1  # Convert to 1-based
+        print(f"\n📊 Existing best model: val_loss={existing_best_loss:.4f} from epoch {existing_best_epoch}")
+        best_val_loss = existing_best_loss
+    
     # Load specific epoch if requested
     checkpoint_to_load = None
     
@@ -89,7 +97,7 @@ def train_model(
         specific_checkpoint = checkpoint_dir / f'checkpoint_epoch_{resume_epoch}.pth'
         if specific_checkpoint.exists():
             checkpoint_to_load = specific_checkpoint
-            print(f"\n📂 FORCE LOADING from epoch {resume_epoch}: {specific_checkpoint}")
+            print(f"\n📂 Loading checkpoint from epoch {resume_epoch}: {specific_checkpoint}")
         else:
             print(f"\n⚠️ WARNING: No checkpoint found for epoch {resume_epoch}")
             print(f"   Looking for: {specific_checkpoint}")
@@ -107,8 +115,8 @@ def train_model(
             if response.lower() != 'y':
                 exit(0)
     
-    elif not force_resume:
-        # Normal checkpoint loading (latest)
+    else:
+        # Normal checkpoint loading (latest) - always check unless specific epoch requested
         latest_checkpoint = checkpoint_dir / 'latest_checkpoint.pth'
         if latest_checkpoint.exists():
             checkpoint_to_load = latest_checkpoint
@@ -120,21 +128,32 @@ def train_model(
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
-        best_val_loss = checkpoint.get('val_loss', float('inf'))
         
-        # Load scheduler state if available
-        if scheduler and 'scheduler_state_dict' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        # Handle force_resume - reset learning rate and scheduler
+        if force_resume:
+            print(f"\n⚙️ FORCE MODE: Resetting learning rate to {learning_rate:.6f}")
+            # Reset optimizer learning rate
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = learning_rate
+            # Don't load scheduler state - let it start fresh
+            if scheduler:
+                print(f"   Scheduler reset - will reduce LR on plateau with patience={scheduler.patience}")
+        else:
+            # Normal mode - load scheduler state if available
+            if scheduler and 'scheduler_state_dict' in checkpoint:
+                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+                print(f"   Loaded scheduler state (current LR: {optimizer.param_groups[0]['lr']:.6f})")
         
         print(f"✓ Loaded checkpoint from epoch {start_epoch}")
         print(f"  Train loss at epoch {start_epoch}: {checkpoint.get('train_loss', 'N/A'):.4f}")
         print(f"  Val loss at epoch {start_epoch}: {checkpoint.get('val_loss', 'N/A'):.4f}")
         print(f"  Will resume training from epoch {start_epoch}")
         
-        # If forcing resume from older checkpoint, clear best val loss
-        if force_resume and resume_epoch:
-            print("\n⚠️ FORCE RESUME: Resetting best validation loss tracking")
-            best_val_loss = float('inf')
+        # Show what we need to beat
+        if best_val_loss != float('inf'):
+            print(f"\n🎯 Target: Beat validation loss of {best_val_loss:.4f}")
+        else:
+            print(f"\n🎯 No previous best model found - establishing new baseline")
 
     print("\n" + "="*60)
     print(f"Training from epoch {start_epoch + 1} to {num_epochs}")
@@ -261,9 +280,10 @@ def train_model(
         
         # Save best model if this is the best so far
         if avg_val_loss < best_val_loss:
+            improvement = best_val_loss - avg_val_loss
             best_val_loss = avg_val_loss
             torch.save(checkpoint_data, checkpoint_dir / 'best_model.pth')
-            print(f"  ✓ New best model saved (val_loss: {avg_val_loss:.4f})")
+            print(f"  ✓ New best model saved! val_loss: {avg_val_loss:.4f} (improved by {improvement:.4f})")
         
         # Save periodic checkpoints
         if (epoch + 1) % save_every == 0:
@@ -286,7 +306,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume-epoch', type=int, default=None,
                         help='Specific epoch to resume from (e.g., 30)')
     parser.add_argument('--force', action='store_true',
-                        help='Force resume from specified epoch even if newer checkpoints exist')
+                        help='Force reset learning rate and scheduler when resuming (useful if LR has decayed too much)')
     parser.add_argument('--save-every', type=int, default=2,
                         help='Save checkpoint every N epochs (default: 2)')
     parser.add_argument('--num-epochs', type=int, default=100,
@@ -321,9 +341,8 @@ if __name__ == '__main__':
     if args.resume_epoch:
         print(f"\n🔄 RESUMING FROM EPOCH {args.resume_epoch}")
         if args.force:
-            print("   Force mode: Will ignore newer checkpoints")
+            print("   Force mode: Will reset learning rate and scheduler")
     
-    # Train with specific resume point
     model = train_model(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
