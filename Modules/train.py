@@ -1,9 +1,9 @@
 from pathlib import Path
 import time
 from fast_dataset import PrecomputedDataset
+from spectral_loss import SpectralLoss
 import unet
 import torch
-from torch import nn
 from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
@@ -65,11 +65,11 @@ def train_model(
     print("\nInitializing model...")
     model = unet.UNet(in_channels=1, out_channels=1).to(device)
 
-    criterion = nn.MSELoss()
+    criterion = SpectralLoss()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
-        weight_decay=1e-4
+        weight_decay=5e-4
     )
 
     scaler = GradScaler("cuda") if use_amp and device == 'cuda' else None
