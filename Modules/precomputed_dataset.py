@@ -5,7 +5,7 @@ from pathlib import Path
 
 class PrecomputedDataset(Dataset):
     def __init__(self, spec_dir):
-        self.spec_files = sorted(Path(spec_dir).glob('*.pt'))
+        self.spec_files = sorted(Path(spec_dir).glob('spec_*.pt'))
         print(f"Found {len(self.spec_files)} pre-computed spectrograms")
     
     def __len__(self):
