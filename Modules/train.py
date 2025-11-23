@@ -1,6 +1,6 @@
 from pathlib import Path
 import time
-from fast_dataset import PrecomputedDataset
+from precomputed_dataset import PrecomputedDataset
 from spectral_loss import SpectralLoss
 import unet
 import torch
@@ -314,7 +314,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # Check if pre-computed specs exist
-    spec_dir = Path('/scratch/egbueze.m/precomputed_specs')
+    spec_dir = Path('/scratch/egbueze.m/precomputed_specs_normalized')
     
     if not spec_dir.exists() or len(list(spec_dir.glob('*.pt'))) == 0:
         print("❌ No pre-computed spectrograms found!")
@@ -347,13 +347,13 @@ if __name__ == '__main__':
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         num_epochs=args.num_epochs,
-        batch_size=64,
+        batch_size=128,
         learning_rate=2e-4,
         device='cuda',
-        checkpoint_dir='/scratch/egbueze.m/checkpoints',
+        checkpoint_dir='/scratch/egbueze.m/checkpoints_normalized',
         save_every=args.save_every,
-        accumulation_steps=2,
-        use_amp=False,
+        accumulation_steps=1,
+        use_amp=True,
         resume_epoch=args.resume_epoch,
         force_resume=args.force
     )

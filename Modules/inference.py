@@ -15,6 +15,7 @@ def dereverb_audio(
     input_audio_path,
     output_audio_path,
     model_path,
+    norm_max=None,  # None = no normalization, value = normalize with this max
     device='cuda' if torch.cuda.is_available() else 'cpu'
 ):
     """
@@ -24,6 +25,7 @@ def dereverb_audio(
         input_audio_path: Path to reverberant audio (.wav, .flac, .mp3)
         output_audio_path: Path to save clean audio
         model_path: Path to trained model checkpoint (.pth)
+        norm_max: Normalization max value (None = no normalization)
         device: 'cuda' or 'cpu'
     
     Returns:
@@ -50,7 +52,10 @@ def dereverb_audio(
     
     model.eval()
     
-    clean_audio, sr = _process_audio(input_audio_path, output_audio_path, model, device, verbose=True)
+    clean_audio, sr = _process_audio(
+        input_audio_path, output_audio_path, model, device, 
+        norm_max=norm_max, verbose=True
+    )
     
     print("\n" + "="*60)
     print("✓ DEREVERBERATION COMPLETE!")
@@ -63,6 +68,7 @@ def dereverb_audio_with_model(
     input_audio_path,
     output_audio_path,
     model,
+    norm_max=None,
     device='cuda' if torch.cuda.is_available() else 'cpu',
     verbose=True
 ):
@@ -73,6 +79,7 @@ def dereverb_audio_with_model(
         input_audio_path: Path to reverberant audio
         output_audio_path: Path to save clean audio
         model: Pre-loaded UNet model
+        norm_max: Normalization max value (None = no normalization)
         device: 'cuda' or 'cpu'
         verbose: Print detailed progress
     
@@ -88,16 +95,17 @@ def dereverb_audio_with_model(
         input_audio_path, 
         output_audio_path, 
         model, 
-        device, 
-        verbose
+        device,
+        norm_max=norm_max,
+        verbose=verbose
     )
     
     return clean_audio, sr
 
 
-def _process_audio(input_path, output_path, model, device, verbose=True):
-    """Internal function to process audio with pre-loaded model""" 
-
+def _process_audio(input_path, output_path, model, device, norm_max=None, verbose=True):
+    """Internal function to process audio with pre-loaded model"""
+    
     if verbose:
         print("  Loading audio...")
     audio, sr = torchaudio.load(str(input_path))
@@ -109,6 +117,14 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
         print("  Converting to spectrogram...")
     magnitude, phase = audio_to_spectrogram(audio)
     original_size = magnitude.shape[-2:]
+    
+    # Handle normalization based on norm_max
+    if norm_max is not None:
+        # Normalize input
+        magnitude = magnitude / norm_max
+        magnitude = torch.clamp(magnitude, 0, 1)
+        if verbose:
+            print(f"  Normalized input with max={norm_max:.2f}")
     
     magnitude_resized = resize_spectrogram(magnitude, (256, 256))
     
@@ -127,11 +143,18 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
             print("  ⚠️ Replacing Inf values")
         clean_resized = torch.nan_to_num(clean_resized, posinf=5.0, neginf=0.0)
     
-    max_before = clean_resized.max().item()
-    clean_resized = torch.clamp(clean_resized, min=0.0, max=5.0)
-    
-    if verbose and max_before > 5.0:
-        print(f"  ⚠️ Clamped max value from {max_before:.2f} to 5.0")
+    if norm_max is not None:
+        # Model outputs normalized [0,1], denormalize
+        clean_resized = torch.clamp(clean_resized, 0, 1)
+        clean_resized = clean_resized * norm_max
+        if verbose:
+            print(f"  Denormalized output")
+    else:
+        # No normalization, use original clamping
+        max_before = clean_resized.max().item()
+        clean_resized = torch.clamp(clean_resized, min=0.0, max=5.0)
+        if verbose and max_before > 5.0:
+            print(f"  ⚠️ Clamped max value from {max_before:.2f} to 5.0")
     
     clean_magnitude = unresize_spectrogram(clean_resized, original_size)
     clean_magnitude = clean_magnitude.squeeze(0)
@@ -170,6 +193,7 @@ def dereverb_batch(
     input_dir,
     output_dir,
     model_path,
+    norm_max=None,
     file_extension=None,
     output_format='match',
     device='cuda' if torch.cuda.is_available() else 'cpu',
@@ -178,14 +202,7 @@ def dereverb_batch(
     """
     Process multiple audio files (OPTIMIZED: loads model once)
     
-    Args:
-        input_dir: Directory containing reverberant audio files
-        output_dir: Directory to save clean audio files
-        model_path: Path to trained model checkpoint
-        file_extension: File pattern (None=all audio, '*.flac', '*.wav', etc.)
-        output_format: Output format - 'match', 'flac', or 'wav'
-        device: 'cuda' or 'cpu'
-        verbose: Print progress
+    [All original parameters preserved - just added norm_max]
     """
     
     input_path = Path(input_dir)
@@ -209,6 +226,7 @@ def dereverb_batch(
     
     print(f"Found {len(audio_files)} audio files in {input_dir}")
     print(f"Output format: {output_format}")
+    print(f"Normalization: {'ON (max=' + str(norm_max) + ')' if norm_max else 'OFF'}")
     print("="*60)
     
     print(f"\nLoading model on {device}...")
@@ -257,7 +275,8 @@ def dereverb_batch(
                 audio_file,
                 output_file,
                 model,
-                device,
+                norm_max=norm_max,
+                device=device,
                 verbose=False
             )
             success_count += 1
@@ -285,11 +304,23 @@ def dereverb_batch(
 
 
 if __name__ == '__main__':
+    # Try to load norm stats if they exist
+    norm_stats_path = Path('/scratch/egbueze.m/precomputed_specs_normalized/normalization_stats.pt')
+    norm_max = None
+    
+    if norm_stats_path.exists():
+        try:
+            stats = torch.load(norm_stats_path)
+            norm_max = stats.get('global_max', stats.get('percentile_99', None))
+            print(f"Loaded normalization max: {norm_max:.2f}")
+        except:
+            pass
     
     dereverb_batch(
         input_dir='/scratch/egbueze.m/reverb_dataset/reverb',
         output_dir='/scratch/egbueze.m/reverb_dataset/clean',
-        model_path='/scratch/egbueze.m/checkpoints/best_model.pth',
+        model_path='/scratch/egbueze.m/checkpoints_normalized/best_model.pth',
+        norm_max=norm_max,  # None = no normalization, value = normalize
         file_extension=None,
         output_format='wav',
         device='cuda'
