@@ -4,6 +4,7 @@ from precomputed_dataset import PrecomputedDataset
 from spectral_loss import SpectralLoss
 import unet
 import torch
+from lion_pytorch import Lion
 from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
@@ -66,10 +67,11 @@ def train_model(
     model = unet.UNet(in_channels=1, out_channels=1).to(device)
 
     criterion = SpectralLoss()
-    optimizer = torch.optim.AdamW(
+    optimizer = Lion(
         model.parameters(),
         lr=learning_rate,
-        weight_decay=5e-4
+        weight_decay=1e-4,
+        use_triton=False
     )
 
     scaler = GradScaler("cuda") if use_amp and device == 'cuda' else None
@@ -201,6 +203,7 @@ def train_model(
                     scaler.step(optimizer)
                     scaler.update()
                     optimizer.zero_grad()
+                    torch.cuda.empty_cache()
             else:
                 pred_spec = model(reverb_spec)
                 loss = criterion(pred_spec, clean_spec)
@@ -211,11 +214,13 @@ def train_model(
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
                     optimizer.zero_grad()
+                    torch.cuda.empty_cache()
             
             train_loss += loss.item() * accumulation_steps
             train_pbar.set_postfix({'loss': f'{loss.item() * accumulation_steps:.4f}'})
             
         avg_train_loss = train_loss / len(train_loader)
+        torch.cuda.empty_cache()
         
         # Handle remaining gradients
         if (len(train_loader) % accumulation_steps) != 0:
@@ -305,12 +310,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Resume training from specific epoch')
     parser.add_argument('--resume-epoch', type=int, default=None,
                         help='Specific epoch to resume from (e.g., 30)')
+    parser.add_argument('--batch-size', type=int, default=64,
+                        help='Batch size for training (default: 64)')
+    parser.add_argument('--lr', type=int, default=1e-4,
+                        help='Learning rate (default: 1e-4)')
+    parser.add_argument('--step', type=int, default=1,
+                        help='Accumulation steps (default: 1)')
     parser.add_argument('--force', action='store_true',
                         help='Force reset learning rate and scheduler when resuming (useful if LR has decayed too much)')
     parser.add_argument('--save-every', type=int, default=2,
                         help='Save checkpoint every N epochs (default: 2)')
     parser.add_argument('--num-epochs', type=int, default=100,
                         help='Total number of epochs to train to (default: 100)')
+    parser.add_argument('--amp', type=bool, default=False,
+                        help='Use automatic mixed precision (default: False)')
     args = parser.parse_args()
     
     # Check if pre-computed specs exist
@@ -347,13 +360,14 @@ if __name__ == '__main__':
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         num_epochs=args.num_epochs,
-        batch_size=128,
-        learning_rate=2e-4,
+        batch_size=args.batch_size,
+        learning_rate=args.lr,
         device='cuda',
         checkpoint_dir='/scratch/egbueze.m/checkpoints_normalized',
         save_every=args.save_every,
-        accumulation_steps=1,
-        use_amp=True,
+        accumulation_steps=args.step,
+        use_amp=args.amp,
         resume_epoch=args.resume_epoch,
         force_resume=args.force
     )
+    
