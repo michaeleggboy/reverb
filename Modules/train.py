@@ -70,13 +70,23 @@ def train_model(
     optimizer = Lion(
         model.parameters(),
         lr=learning_rate,
-        weight_decay=1e-4,
-        use_triton=False
+        weight_decay=1e-4
     )
+    # optimizer = torch.optim.AdamW(
+    #     model.parameters(),
+    #     lr=learning_rate,
+    #     weight_decay=1e-4,
+    #     betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
+    #     eps=1e-6  # Slightly larger for stability with SpectralLoss
+    # )
 
     scaler = GradScaler("cuda") if use_amp and device == 'cuda' else None
     scheduler = ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
+        optimizer, 
+        mode='min', 
+        factor=0.5, 
+        patience=3, 
+        min_lr=1e-6
     ) if use_scheduler else None
 
     best_val_loss = float('inf')
