@@ -4,7 +4,6 @@ from precomputed_dataset import PrecomputedDataset
 from spectral_loss import SpectralLoss
 import unet
 import torch
-from lion_pytorch import Lion
 from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.amp import GradScaler, autocast
@@ -67,18 +66,13 @@ def train_model(
     model = unet.UNet(in_channels=1, out_channels=1).to(device)
 
     criterion = SpectralLoss()
-    optimizer = Lion(
+    optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
-        weight_decay=1e-4
+        weight_decay=1e-4,
+        betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
+        eps=1e-6  # Slightly larger for stability with SpectralLoss
     )
-    # optimizer = torch.optim.AdamW(
-    #     model.parameters(),
-    #     lr=learning_rate,
-    #     weight_decay=1e-4,
-    #     betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
-    #     eps=1e-6  # Slightly larger for stability with SpectralLoss
-    # )
 
     scaler = GradScaler("cuda") if use_amp and device == 'cuda' else None
     scheduler = ReduceLROnPlateau(
@@ -322,7 +316,7 @@ if __name__ == '__main__':
                         help='Specific epoch to resume from (e.g., 30)')
     parser.add_argument('--batch-size', type=int, default=64,
                         help='Batch size for training (default: 64)')
-    parser.add_argument('--lr', type=int, default=1e-4,
+    parser.add_argument('--lr', type=float, default=1e-4,
                         help='Learning rate (default: 1e-4)')
     parser.add_argument('--step', type=int, default=1,
                         help='Accumulation steps (default: 1)')
