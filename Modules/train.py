@@ -43,8 +43,8 @@ def train_model(
         batch_size=batch_size,
         shuffle=True,
         num_workers=1,
-        pin_memory=True if device == 'cuda' else False,
-        persistent_workers=True if device == 'cuda' else False,
+        pin_memory=device == 'cuda',
+        persistent_workers=device == 'cuda',
         prefetch_factor=2
     )
 
@@ -53,8 +53,8 @@ def train_model(
         batch_size=batch_size,
         shuffle=False,
         num_workers=1,
-        pin_memory=True if device == 'cuda' else False,
-        persistent_workers=True if device == 'cuda' else False,
+        pin_memory=device == 'cuda',
+        persistent_workers=device == 'cuda',
         prefetch_factor=2
     )
 
@@ -65,7 +65,7 @@ def train_model(
     print("\nInitializing model...")
     model = unet.UNet(in_channels=1, out_channels=1).to(device)
 
-    criterion = SpectralLoss()
+    criterion = SpectralLoss(adaptive_weights=False)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
@@ -73,6 +73,21 @@ def train_model(
         betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
         eps=1e-6  # Slightly larger for stability with SpectralLoss
     )
+
+#    optimizer = torch.optim.AdamW([
+#         {
+#             'params': model.parameters(),
+#             'lr': learning_rate,
+#             'weight_decay': 1e-4,
+#             'betas': (0.9, 0.98),
+#             'eps': 1e-6
+#         },
+#         {
+#             'params': criterion.parameters(),
+#             'lr': learning_rate * 0.1,  # 10x slower for loss weights
+#             'weight_decay': 0  # No weight decay for loss parameters
+#         }
+#     ])
 
     scaler = GradScaler("cuda") if use_amp and device == 'cuda' else None
     scheduler = ReduceLROnPlateau(
@@ -321,7 +336,8 @@ if __name__ == '__main__':
     parser.add_argument('--step', type=int, default=1,
                         help='Accumulation steps (default: 1)')
     parser.add_argument('--force', action='store_true',
-                        help='Force reset learning rate and scheduler when resuming (useful if LR has decayed too much)')
+                        help='Force reset learning rate and scheduler when resuming \
+                            (useful if LR has decayed too much)')
     parser.add_argument('--save-every', type=int, default=2,
                         help='Save checkpoint every N epochs (default: 2)')
     parser.add_argument('--num-epochs', type=int, default=100,
