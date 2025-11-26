@@ -2,7 +2,7 @@ from pathlib import Path
 import time
 from precomputed_dataset import PrecomputedDataset
 from spectral_loss import SpectralLoss
-import unet
+from unet import UNet
 import torch
 from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -62,32 +62,32 @@ def train_model(
 
     # Initialize model
     print("\nInitializing model...")
-    model = unet.UNet(in_channels=1, out_channels=1).to(device)
+    model = UNet(in_channels=1, out_channels=1).to(device)
 
-    criterion = SpectralLoss(adaptive_weights=False)
+    criterion = SpectralLoss(adaptive_weights=True)
     # criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=learning_rate,
-        weight_decay=1e-4,
-        betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
-        eps=1e-6  # Slightly larger for stability with SpectralLoss
-    )
-
-#    optimizer = torch.optim.AdamW([
-#         {
-#             'params': model.parameters(),
-#             'lr': learning_rate,
-#             'weight_decay': 1e-4,
-#             'betas': (0.9, 0.98),
-#             'eps': 1e-6
-#         },
-#         {
-#             'params': criterion.parameters(),
-#             'lr': learning_rate * 0.1,  # 10x slower for loss weights
-#             'weight_decay': 0  # No weight decay for loss parameters
-#         }
-#     ])
+    # optimizer = torch.optim.AdamW(
+    #     model.parameters(),
+    #     lr=learning_rate,
+    #     weight_decay=1e-4,
+    #     betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
+    #     eps=1e-6  # Slightly larger for stability with SpectralLoss
+    # )
+    
+    optimizer = torch.optim.AdamW([
+        {
+            'params': model.parameters(), 
+            'lr': learning_rate, 
+            'weight_decay': 1e-4, 
+            'betas': (0.9, 0.98), 
+            'eps': 1e-6
+        },
+        {
+            'params': criterion.parameters(), 
+            'lr': learning_rate * 0.1,  # 10x slower for loss weights 
+            'weight_decay': 0  # No weight decay for loss parameters
+        }
+    ])
 
     scaler = GradScaler("cuda") if use_amp and device == 'cuda' else None
     scheduler = ReduceLROnPlateau(
@@ -279,6 +279,12 @@ def train_model(
             current_lr = optimizer.param_groups[0]['lr']
             print(f"LR: {current_lr:.6f}")
         
+        # Monitor adaptive weights
+        if hasattr(criterion, 'log_weight'):
+            log_w = torch.sigmoid(criterion.log_weight).item()
+            hf_w = torch.sigmoid(criterion.hf_weight).item()
+            print(f"[Epoch {epoch+1}] Adaptive weights - Log: {log_w:.3f}, HF: {hf_w:.3f}")
+
         # Print epoch summary
         epoch_time = time.time() - epoch_start
         print(f"[Epoch {epoch+1}/{num_epochs}] "
@@ -360,6 +366,8 @@ if __name__ == '__main__':
         checkpoint_dir='/scratch/egbueze.m/checkpoints_normalized',
         save_every=2,
         accumulation_steps=2,
-        use_amp=False
+        use_amp=False,
+        resume_epoch=None,
+        force_resume=False
     )
   
