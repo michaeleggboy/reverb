@@ -146,9 +146,9 @@ class SpectralLoss(nn.Module):
         return total_loss
 
 
-class SimpleMSEWithPenalty(nn.Module):
+class MSEWithPenalty(nn.Module):
     """
-    Simple MSE loss with penalty for invalid outputs.
+    MSE loss with penalty for invalid outputs.
     Good for comparison and debugging.
     """
     def __init__(self):
