@@ -65,15 +65,6 @@ def train_model(
     model = UNet(in_channels=1, out_channels=1).to(device)
 
     criterion = SpectralLoss(adaptive_weights=True)
-    # criterion = torch.nn.MSELoss()
-    # optimizer = torch.optim.AdamW(
-    #     model.parameters(),
-    #     lr=learning_rate,
-    #     weight_decay=1e-4,
-    #     betas=(0.9, 0.98),  # Lower beta2 for faster adaptation
-    #     eps=1e-6  # Slightly larger for stability with SpectralLoss
-    # )
-    
     optimizer = torch.optim.AdamW([
         {
             'params': model.parameters(), 
