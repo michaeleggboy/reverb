@@ -1,7 +1,6 @@
 from precomputed_dataset import PrecomputedDataset
 from unet import UNet
 import torch
-import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 
