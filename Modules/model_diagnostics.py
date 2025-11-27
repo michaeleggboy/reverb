@@ -69,13 +69,13 @@ def diagnose_model_output(model, test_loader, device='cuda'):
 
 
 if __name__ == '__main__':
-    # Load your trained model
+    # Load trained model
     model = UNet(in_channels=1, out_channels=1).to('cuda')
     checkpoint = torch.load('/scratch/egbueze.m/checkpoints_normalized/best_model.pth')
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
-    # Load your validation dataset
+    # Load validation dataset
     val_dataset = PrecomputedDataset('/scratch/egbueze.m/precomputed_specs_normalized')
     val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
 
