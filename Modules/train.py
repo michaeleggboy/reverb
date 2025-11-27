@@ -140,6 +140,12 @@ def train_model(
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
+
+        if 'criterion_state_dict' in checkpoint:
+            criterion.load_state_dict(checkpoint['criterion_state_dict'])
+            print(f"   Loaded loss weights from checkpoint")
+        else:
+            print(f"   ⚠️ No loss weights in checkpoint - starting fresh")
         
         # Handle force_resume - reset learning rate and scheduler
         if force_resume:
@@ -289,6 +295,7 @@ def train_model(
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'criterion_state_dict': criterion.state_dict(), 
             'train_loss': avg_train_loss,
             'val_loss': avg_val_loss,
         }
