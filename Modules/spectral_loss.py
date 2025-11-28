@@ -66,10 +66,8 @@ class SpectralLoss(nn.Module):
         
         # 3. Stable Log Magnitude Loss (perceptually important for audio)
         # Extra safety: ensure no zeros before log
-        pred_log_input = torch.clamp(pred_stable, min=eps)
-        target_log_input = torch.clamp(target_spec, min=eps)
-        pred_log = torch.log10(pred_log_input + eps)
-        target_log = torch.log10(target_log_input + eps)
+        pred_log = torch.log10(pred_stable + eps)
+        target_log = torch.log10(target_spec + eps)
         log_loss = F.smooth_l1_loss(pred_log, target_log, beta=0.01)
         
         # 4. Spectral Convergence (scale-invariant)
@@ -105,11 +103,9 @@ class SpectralLoss(nn.Module):
                 # L1 at this scale
                 scale_l1 = F.l1_loss(pred_down, target_down)
                 
-                # Log loss at this scale (with safety)
-                pred_down_safe = torch.clamp(pred_down, min=eps)
-                target_down_safe = torch.clamp(target_down, min=eps)
-                pred_down_log = torch.log10(pred_down_safe + eps)
-                target_down_log = torch.log10(target_down_safe + eps)
+                # Log loss at this scale
+                pred_down_log = torch.log10(pred_down + eps)
+                target_down_log = torch.log10(target_down + eps)
                 scale_log = F.smooth_l1_loss(pred_down_log, target_down_log, beta=0.01)
                 
                 multiscale_loss += scale_l1 + 0.3 * scale_log
@@ -272,8 +268,8 @@ class CurriculumSpectralLoss(nn.Module):
             total_loss += w['mse'] * F.mse_loss(pred_stable, target_spec)
         
         if w['log'] > 0:
-            pred_log = torch.log10(torch.clamp(pred_stable, min=eps) + eps)
-            target_log = torch.log10(torch.clamp(target_spec, min=eps) + eps)
+            pred_log = torch.log10(pred_stable + eps)
+            target_log = torch.log10(target_spec + eps)
             total_loss += w['log'] * F.smooth_l1_loss(pred_log, target_log, beta=0.01)
         
         if w['sc'] > 0:

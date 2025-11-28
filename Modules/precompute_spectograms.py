@@ -15,6 +15,7 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True):
     reverb_files = sorted(list(reverb_dir.glob('*.flac')))
     clean_files = sorted(list(clean_dir.glob('*.flac')))
     
+    assert len(reverb_files) == len(clean_files), f"Mismatch: {len(reverb_files)} reverb, {len(clean_files)} clean"
     print(f"Pre-computing {len(reverb_files)} spectrograms...")
     
     if normalize:
@@ -77,6 +78,8 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True):
         torch.save({
             'reverb': reverb_spec,
             'clean': clean_spec,
+            'reverb_file': reverb_file.name,
+            'clean_file': clean_file.name, 
             'normalized': normalize,
             'max_val': max_val if normalize else None,
             'original_max': original_max  # Keep track of original for debugging
