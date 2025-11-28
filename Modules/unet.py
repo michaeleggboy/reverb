@@ -8,16 +8,16 @@ class UNet(nn.Module):
         
         # Encoder (downsampling path)
         self.encoder1 = self._double_conv(in_channels, features[0])
-        self.pool1 = nn.MaxPool2d(2, 2)
+        self.pool1 = nn.Conv2d(features[0], features[0], kernel_size=3, stride=2, padding=1)
         
         self.encoder2 = self._double_conv(features[0], features[1])
-        self.pool2 = nn.MaxPool2d(2, 2)
+        self.pool2 = nn.Conv2d(features[1], features[1], kernel_size=3, stride=2, padding=1)
         
         self.encoder3 = self._double_conv(features[1], features[2])
-        self.pool3 = nn.MaxPool2d(2, 2)
+        self.pool3 = nn.Conv2d(features[2], features[2], kernel_size=3, stride=2, padding=1)
         
         self.encoder4 = self._double_conv(features[2], features[3])
-        self.pool4 = nn.MaxPool2d(2, 2)
+        self.pool4 = nn.Conv2d(features[3], features[3], kernel_size=3, stride=2, padding=1)
         
         # Bottleneck
         self.bottleneck = self._double_conv(features[3], features[3] * 2)
@@ -43,17 +43,17 @@ class UNet(nn.Module):
     
     def _double_conv(self, in_channels, out_channels):
         return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
+            nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),  # bias=False with BatchNorm
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.LeakyReLU(0.2, inplace=True)
         )
     
     def forward(self, x):
         # Encoder with skip connections
-        enc1 = self.encoder1(x)      # 256x256
+        enc1 = self.encoder1(x)                 # 256x256
         enc2 = self.encoder2(self.pool1(enc1))  # 128x128
         enc3 = self.encoder3(self.pool2(enc2))  # 64x64
         enc4 = self.encoder4(self.pool3(enc3))  # 32x32
@@ -79,4 +79,3 @@ class UNet(nn.Module):
         dec1 = self.decoder1(dec1)
         
         return self.out(dec1)
-    

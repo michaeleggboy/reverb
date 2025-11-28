@@ -11,23 +11,25 @@ def create_reverb_from_librispeech(
     output_dir,
     subset='train-clean-100',
     rooms_per_audio=3,
-    checkpoint_file=None
+    checkpoint_file=None,
+    use_frequency_dependent_rt60=True  # NEW: Enable frequency-dependent decay
 ):
     """
     Generate reverberant versions from LibriSpeech clean data
     
-    Features:
-    - Automatic checkpointing and resume capability
-    - Progress tracking with time estimates
-    - Error handling and validation
-    - Atomic checkpoint saves to prevent corruption
+    Enhanced with:
+    - Frequency-dependent RT60 for more realistic reverb
+    - Improved normalization that preserves Direct-to-Reverb Ratio
+    - All original features (checkpointing, progress tracking, etc.)
     
     Args:
         librispeech_root: Path to LibriSpeech root (contains train-clean-100/, etc.)
         output_dir: Where to save reverb/clean pairs
         subset: Which LibriSpeech subset to use ('train-clean-100', 'dev-clean', etc.)
         rooms_per_audio: Number of different room configs per audio file
-        checkpoint_file: Path to save/load progress (default: output_dir/generation_checkpoint.json)
+        checkpoint_file: Path to save/load progress
+        use_frequency_dependent_rt60: Use realistic frequency-dependent decay
+        preserve_drr_normalization: Use clean reference for normalization
     """
 
     subset_path = Path(librispeech_root) / subset
@@ -58,6 +60,10 @@ def create_reverb_from_librispeech(
     
     print(f"Found {total_source_files} source audio files")
     print(f"Expected total samples: {expected_total_samples} ({rooms_per_audio} rooms per file)")
+    
+    # Enhanced feature flags
+    print(f"Frequency-dependent RT60: {'ON' if use_frequency_dependent_rt60 else 'OFF'}")
+    print(f"DRR-preserving normalization: {'ON' if preserve_drr_normalization else 'OFF'}")
     
     processed_files = set()
     sample_idx = 0
@@ -116,12 +122,32 @@ def create_reverb_from_librispeech(
 
                     for room_idx in range(rooms_per_audio):
                         room_dim = np.random.uniform([3, 3, 2.5], [10, 10, 4])
-                        rt60 = np.random.uniform(0.2, 1.0)
+                        rt60_base = np.random.uniform(0.2, 1.0)
+                        
+                        if use_frequency_dependent_rt60:
+                            # ENHANCEMENT 1: Frequency-dependent RT60
+                            # High frequencies decay faster in real rooms
+                            # PyRoomAcoustics expects 6 octave bands: 
+                            # [125, 250, 500, 1000, 2000, 4000] Hz
+                            rt60_bands = np.array([
+                                rt60_base * np.random.uniform(0.9, 1.1),   # 125 Hz
+                                rt60_base * np.random.uniform(0.95, 1.05),  # 250 Hz
+                                rt60_base,                                   # 500 Hz (reference)
+                                rt60_base * np.random.uniform(0.9, 1.0),    # 1000 Hz
+                                rt60_base * np.random.uniform(0.8, 0.95),   # 2000 Hz
+                                rt60_base * np.random.uniform(0.7, 0.9),    # 4000 Hz (fastest decay)
+                            ])
+                            
+                            # Create materials with frequency-dependent absorption
+                            materials = pra.Material(rt60_bands)
+                        else:
+                            # Original single RT60 value
+                            materials = pra.Material(rt60_base)
 
                         room = pra.ShoeBox(
                             room_dim,
                             fs=sr,
-                            materials=pra.Material(rt60),
+                            materials=materials,
                             max_order=15  # Number of wall reflections
                         )
 
@@ -140,25 +166,28 @@ def create_reverb_from_librispeech(
                         room.simulate()
                         reverb_audio = room.mic_array.signals[0, :]
 
-                        max_reverb = np.max(np.abs(reverb_audio))
+                        # ENHANCEMENT 2: Improved normalization
+                        # Use clean audio as reference for both clean and reverb
                         max_clean = np.max(np.abs(audio))
-                        
-                        if max_reverb > 0:
-                            reverb_audio = reverb_audio / max_reverb * 0.9
-                        else:
-                            print("  ⚠️ Silent reverb audio, skipping")
-                            continue
-                        
+                            
                         if max_clean > 0:
-                            clean_audio_norm = audio / max_clean * 0.9
+                            # Scale both by the same factor
+                            scale_factor = max_clean / 0.9
+                            clean_audio_norm = audio / scale_factor
+                                
+                            # Scale reverb by same factor, then clip to prevent overflow
+                            reverb_audio_scaled = reverb_audio / scale_factor
+                            reverb_audio = np.clip(reverb_audio_scaled, -1.0, 1.0)
                         else:
                             print("  ⚠️ Silent clean audio, skipping")
                             continue
 
+                        # Ensure same length
                         min_len = min(len(reverb_audio), len(clean_audio_norm))
                         reverb_audio = reverb_audio[:min_len]
                         clean_audio_norm = clean_audio_norm[:min_len]
                         
+                        # Validation checks
                         if np.isnan(reverb_audio).any() or np.isinf(reverb_audio).any():
                             print("  ⚠️ NaN/Inf in reverb, skipping")
                             continue
@@ -166,9 +195,11 @@ def create_reverb_from_librispeech(
                             print("  ⚠️ NaN/Inf in clean, skipping")
                             continue
                         
+                        # Final safety clipping and type conversion
                         reverb_audio = np.clip(reverb_audio, -1.0, 1.0).astype(np.float32)
                         clean_audio_norm = np.clip(clean_audio_norm, -1.0, 1.0).astype(np.float32)
 
+                        # Save files
                         filename = f'{speaker_id}_{chapter_id}_{flac_file.stem}_room{room_idx}.flac'
                         reverb_path = reverb_dir / filename
                         clean_path = clean_dir / filename
@@ -181,6 +212,7 @@ def create_reverb_from_librispeech(
                     sample_idx += samples_this_file
                     processed_files.add(file_id)
                     
+                    # Checkpoint saving
                     if len(processed_files) % 10 == 0:
                         _save_checkpoint(
                             checkpoint_file,
@@ -188,6 +220,7 @@ def create_reverb_from_librispeech(
                             sample_idx
                         )
                     
+                    # Progress reporting
                     if sample_idx % 100 == 0 or sample_idx % 300 == 0:
                         elapsed = time.time() - start_time
                         rate = sample_idx / (elapsed / 60) if elapsed > 0 else 0
@@ -231,13 +264,10 @@ def create_reverb_from_librispeech(
 def _save_checkpoint(checkpoint_file, processed_files, sample_count):
     """
     Save generation progress to checkpoint file
-    
-    FIX: Uses atomic write to prevent corruption
-    Writes to temp file first, then renames (atomic operation)
+    Uses atomic write to prevent corruption
     """
-
     checkpoint_data = {
-        'processed_files': sorted(list(processed_files)),  # Sorted for readability
+        'processed_files': sorted(list(processed_files)),
         'sample_count': sample_count,
         'timestamp': time.time()
     }
@@ -257,11 +287,11 @@ def _save_checkpoint(checkpoint_file, processed_files, sample_count):
 
 
 if __name__ == '__main__':
-
+    # Example usage with enhanced features
     create_reverb_from_librispeech(
         librispeech_root='/scratch/egbueze.m/librispeech/LibriSpeech',
-        output_dir='/scratch/egbueze.m/reverb_dataset',
-        subset='train-clean-100',  # ~100 hours
-        rooms_per_audio=3  # 3 different rooms per utterance
+        output_dir='/scratch/egbueze.m/reverb_dataset_enhanced',  # New directory
+        subset='train-clean-100',
+        rooms_per_audio=3,
+        use_frequency_dependent_rt60=True  # Enable realistic frequency decay
     )
-    
