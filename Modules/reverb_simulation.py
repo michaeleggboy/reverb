@@ -29,7 +29,6 @@ def create_reverb_from_librispeech(
         rooms_per_audio: Number of different room configs per audio file
         checkpoint_file: Path to save/load progress
         use_frequency_dependent_rt60: Use realistic frequency-dependent decay
-        preserve_drr_normalization: Use clean reference for normalization
     """
 
     subset_path = Path(librispeech_root) / subset
@@ -63,7 +62,6 @@ def create_reverb_from_librispeech(
     
     # Enhanced feature flags
     print(f"Frequency-dependent RT60: {'ON' if use_frequency_dependent_rt60 else 'OFF'}")
-    print(f"DRR-preserving normalization: {'ON' if preserve_drr_normalization else 'OFF'}")
     
     processed_files = set()
     sample_idx = 0

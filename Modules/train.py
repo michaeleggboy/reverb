@@ -294,6 +294,7 @@ def train_model(
         checkpoint_data = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
+            'model_config': {'in_channels': 1, 'out_channels': 1, 'features': [64, 128, 256, 512]},
             'optimizer_state_dict': optimizer.state_dict(),
             'criterion_state_dict': criterion.state_dict(), 
             'train_loss': avg_train_loss,
