@@ -147,9 +147,9 @@ def create_reverb_from_librispeech(
                             absorption_coeffs = np.clip(absorption_coeffs, 0, 0.99)  # Must be < 1
                             
                             material_dict = {
-                            'description': 'Custom frequency-dependent material',
-                            'coeffs': absorption_coeffs.tolist(),
-                            'center_freqs': [125, 250, 500, 1000, 2000, 4000]
+                                'description': 'Custom frequency-dependent material',
+                                'coeffs': absorption_coeffs.tolist(),
+                                'center_freqs': [125, 250, 500, 1000, 2000, 4000]
                             }
                             materials = pra.Material(energy_absorption=material_dict)
                         else:
