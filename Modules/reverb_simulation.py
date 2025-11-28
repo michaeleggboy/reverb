@@ -123,21 +123,35 @@ def create_reverb_from_librispeech(
                         rt60_base = np.random.uniform(0.2, 1.0)
                         
                         if use_frequency_dependent_rt60:
-                            # ENHANCEMENT 1: Frequency-dependent RT60
-                            # High frequencies decay faster in real rooms
-                            # PyRoomAcoustics expects 6 octave bands: 
-                            # [125, 250, 500, 1000, 2000, 4000] Hz
+                            # Define center frequencies (pyroomacoustics standard)
+                            center_freqs = [125, 250, 500, 1000, 2000, 4000]
+                            
+                            # Create RT60 values for each frequency
                             rt60_bands = np.array([
-                                rt60_base * np.random.uniform(0.9, 1.1),   # 125 Hz
+                                rt60_base * np.random.uniform(0.9, 1.1),    # 125 Hz
                                 rt60_base * np.random.uniform(0.95, 1.05),  # 250 Hz
-                                rt60_base,                                   # 500 Hz (reference)
+                                rt60_base,                                  # 500 Hz
                                 rt60_base * np.random.uniform(0.9, 1.0),    # 1000 Hz
                                 rt60_base * np.random.uniform(0.8, 0.95),   # 2000 Hz
-                                rt60_base * np.random.uniform(0.7, 0.9),    # 4000 Hz (fastest decay)
+                                rt60_base * np.random.uniform(0.7, 0.9),    # 4000 Hz
                             ])
                             
-                            # Create materials with frequency-dependent absorption
-                            materials = pra.Material(rt60_bands)
+                            # Convert RT60 to absorption coefficients using Eyring's formula
+                            # absorption = 1 - exp(-0.163 * V / (S * RT60))
+                            # For a shoebox room: V/S = volume/surface_area
+                            room_volume = np.prod(room_dim)
+                            room_surface = 2 * (room_dim[0]*room_dim[1] + room_dim[1]*room_dim[2] + room_dim[0]*room_dim[2])
+                            
+                            # Sabine's formula (simpler approximation)
+                            absorption_coeffs = 0.161 * room_volume / (room_surface * rt60_bands)
+                            absorption_coeffs = np.clip(absorption_coeffs, 0, 0.99)  # Must be < 1
+                            
+                            material_dict = {
+                            'description': 'Custom frequency-dependent material',
+                            'coeffs': absorption_coeffs.tolist(),
+                            'center_freqs': [125, 250, 500, 1000, 2000, 4000]
+                            }
+                            materials = pra.Material(energy_absorption=material_dict)
                         else:
                             # Original single RT60 value
                             materials = pra.Material(rt60_base)
@@ -288,7 +302,7 @@ if __name__ == '__main__':
     # Example usage with enhanced features
     create_reverb_from_librispeech(
         librispeech_root='/scratch/egbueze.m/librispeech/LibriSpeech',
-        output_dir='/scratch/egbueze.m/reverb_dataset_enhanced',  # New directory
+        output_dir='/scratch/egbueze.m/reverb_dataset',
         subset='train-clean-100',
         rooms_per_audio=3,
         use_frequency_dependent_rt60=True  # Enable realistic frequency decay
