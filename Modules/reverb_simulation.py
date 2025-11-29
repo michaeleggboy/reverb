@@ -66,7 +66,7 @@ def create_reverb_from_librispeech(
             processed_files = set()
             sample_idx = 0
     
-    print("="*60)
+    print("="*70)
     
     # Main progress bar
     pbar = tqdm(total=expected_total_samples, initial=sample_idx, 
