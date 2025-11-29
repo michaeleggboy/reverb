@@ -50,7 +50,7 @@ def create_reverb_from_librispeech(
     
     print(f"Found {total_source_files} source audio files")
     print(f"Expected total samples: {expected_total_samples}")
-    print(f"Settings: Frequency Dependent rt60 | rooms_per_audio={rooms_per_audio}")
+    print(f"Settings: Frequency Dependent rt60 | Adaptive rt60 | rooms_per_audio={rooms_per_audio}")
     
     processed_files = set()
     sample_idx = 0
@@ -98,8 +98,14 @@ def create_reverb_from_librispeech(
 
             for room_idx in range(rooms_per_audio):
                 room_dim = np.random.uniform([3, 3, 2.5], [10, 10, 4])
-                rt60_base = np.random.uniform(0.2, 1.0)
-                
+                room_volume = np.prod(room_dim)
+                volume_factor = np.clip(room_volume / 400, 0.0, 1.0)
+
+                rt60_min = 0.2 + 0.2 * volume_factor
+                rt60_max = 0.5 + 0.5 * volume_factor
+                rt60 = np.random.uniform(rt60_min, rt60_max)
+                rt60_base = np.clip(rt60, 0.15, 1.2)       
+
                 if frequency_dependent_rt60:
                     try:
                         tilt = np.random.uniform(-0.08, 0.08)
