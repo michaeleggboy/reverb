@@ -1,6 +1,8 @@
 from pathlib import Path
 import soundfile as sf
 import json
+import time
+from tqdm import tqdm
 
 
 def verify_and_cleanup_dataset(dataset_dir, auto_delete=False):
@@ -22,11 +24,14 @@ def verify_and_cleanup_dataset(dataset_dir, auto_delete=False):
         print(f"Error: {clean_dir} doesn't exist")
         return 0
 
-    # Get all files
-    reverb_files = {f.name for f in reverb_dir.glob('*.flac')}
-    clean_files = {f.name for f in clean_dir.glob('*.flac')}
+    # Get all files with progress bar
+    print("Scanning reverb directory...")
+    reverb_files = {f.name for f in tqdm(reverb_dir.glob('*.flac'), desc="Reverb files", unit="files")}
+    
+    print("Scanning clean directory...")
+    clean_files = {f.name for f in tqdm(clean_dir.glob('*.flac'), desc="Clean files", unit="files")}
 
-    print(f"Found {len(reverb_files)} reverb files")
+    print(f"\nFound {len(reverb_files)} reverb files")
     print(f"Found {len(clean_files)} clean files")
     print()
 
@@ -69,19 +74,19 @@ def verify_and_cleanup_dataset(dataset_dir, auto_delete=False):
             print("Cleanup cancelled.")
             return len(matching)
 
-    # Delete mismatches
+    # Delete mismatches with progress bar
     deleted_count = 0
 
     if only_reverb:
-        print(f"Deleting {len(only_reverb)} unmatched reverb files...")
-        for filename in only_reverb:
+        print(f"\nDeleting {len(only_reverb)} unmatched reverb files...")
+        for filename in tqdm(only_reverb, desc="Deleting reverb", unit="files"):
             file_path = reverb_dir / filename
             file_path.unlink()
             deleted_count += 1
 
     if only_clean:
-        print(f"Deleting {len(only_clean)} unmatched clean files...")
-        for filename in only_clean:
+        print(f"\nDeleting {len(only_clean)} unmatched clean files...")
+        for filename in tqdm(only_clean, desc="Deleting clean", unit="files"):
             file_path = clean_dir / filename
             file_path.unlink()
             deleted_count += 1
@@ -115,19 +120,22 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
         checkpoint_file = Path(checkpoint_file)
     
     # Get all files to check
+    print("Collecting files to verify...")
     reverb_files = sorted(reverb_dir.glob('*.flac'))
     clean_files = sorted(clean_dir.glob('*.flac'))
     all_files = reverb_files + clean_files
     total_files = len(all_files)
     
-    print(f"Checking integrity of {total_files} files...")
+    print(f"Found {total_files} total files to check")
+    print(f"  Reverb: {len(reverb_files)}")
+    print(f"  Clean: {len(clean_files)}")
     
     # ===== LOAD CHECKPOINT IF EXISTS =====
     checked_files = set()
     corrupted = []
     
     if checkpoint_file.exists():
-        print("📂 Found integrity checkpoint, resuming...")
+        print("\n📂 Found integrity checkpoint, resuming...")
         try:
             with open(checkpoint_file, 'r') as f:
                 checkpoint_data = json.load(f)
@@ -141,22 +149,25 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
             checked_files = set()
             corrupted = []
     
-    # ===== CHECK FILES =====
-    files_checked_this_session = 0
+    # ===== CHECK FILES WITH TQDM =====
+    print("\nChecking file integrity...")
     
-    for i, file_path in enumerate(all_files):
-        # Convert to string for set comparison
-        file_str = str(file_path)
-        
-        # Skip if already checked
-        if file_str in checked_files:
-            continue
-        
-        # Progress update
-        total_checked = len(checked_files) + files_checked_this_session
-        if total_checked % 100 == 0 and total_checked > 0:
-            progress_pct = 100 * total_checked / total_files
-            print(f"  Checked {total_checked}/{total_files} files ({progress_pct:.1f}%)...")
+    # Filter out already checked files
+    files_to_check = [f for f in all_files if str(f) not in checked_files]
+    
+    # Progress bar
+    pbar = tqdm(
+        files_to_check, 
+        desc="Verifying files", 
+        unit="files",
+        initial=len(checked_files),
+        total=total_files,
+        ncols=100
+    )
+    
+    for file_path in pbar:
+        # Update description with current file
+        pbar.set_description(f"Checking: {file_path.name[:30]}")
         
         try:
             # Try to read the file
@@ -164,16 +175,19 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
             
             # Check if empty or invalid
             if len(audio) == 0:
-                print(f"  Empty file: {file_path.name}")
                 corrupted.append(file_path)
+                tqdm.write(f"  ✗ Empty file: {file_path.name}")
         
         except Exception as e:
-            print(f"  Corrupted: {file_path.name} - {e}")
             corrupted.append(file_path)
+            tqdm.write(f"  ✗ Corrupted: {file_path.name} - {str(e)[:50]}")
         
         # Mark as checked
+        file_str = str(file_path)
         checked_files.add(file_str)
-        files_checked_this_session += 1
+        
+        # Update postfix with stats
+        pbar.set_postfix({'corrupted': len(corrupted)})
         
         # ===== SAVE CHECKPOINT EVERY 500 FILES =====
         if len(checked_files) % 500 == 0:
@@ -183,10 +197,15 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
                 [str(p) for p in corrupted]
             )
     
+    pbar.close()
+    
     # ===== FINAL RESULTS =====
     print()
-    print(f"Checked {len(checked_files)} files total")
-    print(f"Found {len(corrupted)} corrupted/empty files")
+    print("=" * 60)
+    print("INTEGRITY CHECK COMPLETE")
+    print(f"  Total files checked: {len(checked_files)}")
+    print(f"  Corrupted files found: {len(corrupted)}")
+    print("=" * 60)
     
     if corrupted:
         print("\nCorrupted files:")
@@ -197,13 +216,16 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
         
         response = input(f"\nDelete {len(corrupted)} corrupted files? (yes/no): ")
         if response.lower() in ['yes', 'y']:
-            for file_path in corrupted:
+            print("\nDeleting corrupted files...")
+            for file_path in tqdm(corrupted, desc="Deleting", unit="files"):
                 file_path.unlink()
             print(f"✓ Deleted {len(corrupted)} corrupted files")
             
             # Also delete their pairs
             print("\nCleaning up orphaned pairs...")
             verify_and_cleanup_dataset(dataset_dir, auto_delete=True)
+    else:
+        print("✓ No corrupted files found!")
     
     # Clean up checkpoint on completion
     if checkpoint_file.exists():
@@ -225,7 +247,7 @@ def _save_integrity_checkpoint(checkpoint_file, checked_files, corrupted_files):
     checkpoint_data = {
         'checked_files': sorted(list(checked_files)),
         'corrupted_files': corrupted_files,
-        'timestamp': time.time() if 'time' in dir() else 0
+        'timestamp': time.time()
     }
     
     # Atomic write
@@ -238,7 +260,7 @@ def _save_integrity_checkpoint(checkpoint_file, checked_files, corrupted_files):
         temp_file.replace(checkpoint_file)
         
     except Exception as e:
-        print(f"    ⚠️ Checkpoint save failed: {e}")
+        tqdm.write(f"    ⚠️ Checkpoint save failed: {e}")
         if temp_file.exists():
             temp_file.unlink()
 
@@ -261,8 +283,19 @@ def quick_verify(dataset_dir):
         print("Error: Dataset directories not found")
         return 0
     
-    reverb = set(f.name for f in reverb_dir.glob('*.flac'))
-    clean = set(f.name for f in clean_dir.glob('*.flac'))
+    print("Scanning directories...")
+    reverb = set(f.name for f in tqdm(
+        reverb_dir.glob('*.flac'), 
+        desc="Reverb", 
+        unit="files",
+        leave=False
+    ))
+    clean = set(f.name for f in tqdm(
+        clean_dir.glob('*.flac'), 
+        desc="Clean", 
+        unit="files",
+        leave=False
+    ))
     
     matching = reverb & clean
     mismatched = reverb ^ clean  # Symmetric difference
@@ -278,20 +311,54 @@ def quick_verify(dataset_dir):
     return len(matching)
 
 
+def count_samples_by_rooms(dataset_dir):
+    """
+    Count how many samples per room configuration exist
+    
+    Args:
+        dataset_dir: Path to dataset root
+    
+    Returns:
+        Dict of room counts
+    """
+    reverb_dir = Path(dataset_dir) / 'reverb'
+    
+    if not reverb_dir.exists():
+        print("Error: Reverb directory not found")
+        return {}
+    
+    print("Analyzing room distribution...")
+    
+    room_counts = {}
+    files = list(reverb_dir.glob('*.flac'))
+    
+    for file_path in tqdm(files, desc="Counting rooms", unit="files"):
+        # Extract room number from filename
+        # Format: speaker_chapter_file_roomX.flac
+        filename = file_path.stem
+        if '_room' in filename:
+            room_num = filename.split('_room')[-1]
+            room_counts[f'room{room_num}'] = room_counts.get(f'room{room_num}', 0) + 1
+    
+    print("\nRoom distribution:")
+    for room, count in sorted(room_counts.items()):
+        print(f"  {room}: {count} samples")
+    
+    return room_counts
+
+
 # ==========================================
 # MAIN EXECUTION
 # ==========================================
 
 if __name__ == '__main__':
-    import time  # For checkpoint timestamps
-    
-    dataset_path = './drive/MyDrive/dereverb_dataset'
+    dataset_path = '/scratch/egbueze.m/reverb_dataset'
     
     print("="*60)
-    print("DATASET VERIFICATION")
+    print("DATASET VERIFICATION WITH TQDM")
     print("="*60)
     
-    # STEP 1: Quick pair matching check (1-2 seconds)
+    # STEP 1: Quick pair matching check
     print("\nSTEP 1: Quick verification (checking pairs)")
     print("-"*60)
     matched = quick_verify(dataset_path)
@@ -305,7 +372,7 @@ if __name__ == '__main__':
     # STEP 3: Optional deep integrity check
     print("\nSTEP 3: Deep integrity check (optional, slower)")
     print("-"*60)
-    response = input("Run deep integrity check? This reads all files (~30-60 sec). (yes/no): ")
+    response = input("Run deep integrity check? This reads all files. (yes/no): ")
     
     if response.lower() in ['yes', 'y']:
         print("\nRunning deep integrity check...")
@@ -317,6 +384,14 @@ if __name__ == '__main__':
             matched = verify_and_cleanup_dataset(dataset_path, auto_delete=True)
     else:
         print("Skipped deep integrity check")
+    
+    # STEP 4: Room distribution analysis
+    print("\nSTEP 4: Room distribution analysis")
+    print("-"*60)
+    response = input("Analyze room distribution? (yes/no): ")
+    
+    if response.lower() in ['yes', 'y']:
+        room_counts = count_samples_by_rooms(dataset_path)
     
     # FINAL SUMMARY
     print("\n" + "="*60)
