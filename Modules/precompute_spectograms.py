@@ -7,7 +7,7 @@ import numpy as np
 import time
 
 
-def precompute_all_spectrograms(data_dir, output_dir, normalize=True, checkpoint_interval=100):
+def precompute_all_spectrograms(data_dir, output_dir, normalize=True):
     """
     Precompute spectrograms with normalization and progress tracking
     
@@ -15,7 +15,6 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True, checkpoint
         data_dir: Path to dataset with reverb/ and clean/ subdirectories
         output_dir: Where to save precomputed spectrograms
         normalize: Whether to apply global normalization
-        checkpoint_interval: Save checkpoint every N files
     """
     reverb_dir = Path(data_dir) / 'reverb'
     clean_dir = Path(data_dir) / 'clean'
@@ -32,7 +31,16 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True, checkpoint
     print(f"Found {total_files} audio file pairs")
     print("="*70)
     
-    if normalize:
+    stats_file = output_dir / 'normalization_stats.pt'
+    
+    if normalize and stats_file.exists():
+        print("\n📂 Found existing normalization_stats.pt, loading...")
+        stats = torch.load(stats_file)
+        global_norm = stats['global_norm_used']
+        all_max_values = None
+        print(f"   Loaded global_norm: {global_norm:.2f}")
+        print("   Skipping Pass 1!")
+    elif normalize:
         print("\n📊 PASS 1/2: Collecting statistics for normalization")
         print("-"*70)
         
@@ -112,7 +120,7 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True, checkpoint
     error_count = 0
     start_time = time.time()
     
-    for idx, (reverb_file, clean_file in pbar:
+    for idx, (reverb_file, clean_file) in pbar:
         # Skip if already processed
         output_file = output_dir / f'spec_{idx:06d}.pt'
         if output_file.exists():
@@ -183,8 +191,8 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True, checkpoint
     
     pbar.close()
     
-    # Save normalization statistics
-    if normalize:
+    # Save normalization statistics s(only if we computed them this run)
+    if normalize and all_max_values is not None:
         stats = {
             'normalized': True,
             'method': 'global_percentile',
