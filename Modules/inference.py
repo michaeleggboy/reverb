@@ -2,6 +2,7 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 import torchaudio
+from tqdm import tqdm
 from unet import UNet
 from audio_utils import (
     audio_to_spectrogram,
@@ -140,6 +141,7 @@ def dereverb_batch(
     output_path.mkdir(exist_ok=True, parents=True)
     
     # Find audio files
+    print("Scanning for audio files...")
     if file_extension is None:
         audio_files = []
         for ext in ['*.wav', '*.flac', '*.mp3', '*.ogg']:
@@ -185,11 +187,14 @@ def dereverb_batch(
     
     success_count = 0
     error_count = 0
+    skipped_count = 0
     
-    # Process each file
-    for i, audio_file in enumerate(audio_files):
-        if verbose:
-            print(f"\n[{i+1}/{len(audio_files)}] {audio_file.name}")
+    # Process each file with tqdm progress bar
+    pbar = tqdm(audio_files, desc="Processing audio", unit="files", ncols=100)
+    
+    for audio_file in pbar:
+        # Update progress bar description with current file
+        pbar.set_description(f"Processing: {audio_file.name[:30]}")
         
         # Determine output format
         if output_format == 'match':
@@ -205,9 +210,9 @@ def dereverb_batch(
         
         # Skip if already processed
         if output_file.exists():
-            if verbose:
-                print("  ⏭️  Skipping (already exists)")
+            skipped_count += 1
             success_count += 1
+            pbar.set_postfix({'success': success_count, 'errors': error_count, 'skipped': skipped_count})
             continue
         
         try:
@@ -218,29 +223,30 @@ def dereverb_batch(
                 model,
                 norm_max=norm_max,
                 device=device,
-                verbose=False  # Less verbose for batch
+                verbose=False  # Silent for tqdm
             )
             success_count += 1
             
-            if verbose:
-                print(f"  ✓ Saved as {output_ext}")
-            
-            # Progress update every 50 files
-            if verbose and (i + 1) % 50 == 0:
-                pct = 100 * (i + 1) / len(audio_files)
-                print(f"\n📊 Progress: {i+1}/{len(audio_files)} ({pct:.1f}%)")
-                print(f"   Success: {success_count}, Errors: {error_count}")
+            # Update postfix with stats
+            pbar.set_postfix({'success': success_count, 'errors': error_count, 'skipped': skipped_count})
         
         except Exception as e:
-            print(f"  ✗ ERROR: {e}")
             error_count += 1
+            pbar.set_postfix({'success': success_count, 'errors': error_count, 'skipped': skipped_count})
+            
+            # Log error to separate line without disrupting progress bar
+            tqdm.write(f"  ✗ ERROR in {audio_file.name}: {str(e)[:50]}")
             continue
+    
+    pbar.close()
     
     # Final summary
     print("\n" + "="*60)
     print("BATCH PROCESSING COMPLETE")
     print(f"  Successful: {success_count}/{len(audio_files)}")
+    print(f"  Skipped (already exists): {skipped_count}")
     print(f"  Errors: {error_count}/{len(audio_files)}")
+    print(f"  Output directory: {output_dir}")
     print("="*60)
     
     return success_count, error_count
