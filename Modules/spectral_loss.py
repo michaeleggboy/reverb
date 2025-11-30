@@ -131,8 +131,8 @@ class SpectralLoss(nn.Module):
             multiscale_loss /= valid_scales
         
         # 7. Energy Conservation Loss
-        pred_energy = torch.sum(pred_stable ** 2, dim=(-2, -1))
-        target_energy = torch.sum(target_spec ** 2, dim=(-2, -1))
+        pred_energy = torch.mean(pred_stable ** 2, dim=(-2, -1))
+        target_energy = torch.mean(target_spec ** 2, dim=(-2, -1))
         energy_loss = F.l1_loss(pred_energy, target_energy)
         
         # 8. High-Frequency Emphasis

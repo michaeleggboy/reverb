@@ -41,7 +41,7 @@ def train_model(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=1,
+        num_workers=4,
         pin_memory=device == 'cuda',
         persistent_workers=device == 'cuda',
         prefetch_factor=2
@@ -51,7 +51,7 @@ def train_model(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=1,
+        num_workers=4,
         pin_memory=device == 'cuda',
         persistent_workers=device == 'cuda',
         prefetch_factor=2
@@ -64,7 +64,7 @@ def train_model(
     print("\nInitializing model...")
     model = UNet(in_channels=1, out_channels=1).to(device)
 
-    criterion = SpectralLoss(adaptive_weights=True, use_perceptual=True)
+    criterion = SpectralLoss(adaptive_weights=True, use_perceptual=True).to(device)
     optimizer = torch.optim.AdamW([
         {
             'params': model.parameters(), 
@@ -359,13 +359,13 @@ if __name__ == '__main__':
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         num_epochs=100,
-        batch_size=64,
+        batch_size=32,
         learning_rate=3e-4,
         device='cuda',
         checkpoint_dir='/scratch/egbueze.m/checkpoints_normalized',
         save_every=2,
         accumulation_steps=2,
-        use_amp=False,
+        use_amp=True,
         resume_epoch=None,
         force_resume=False
     )
