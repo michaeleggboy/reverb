@@ -23,18 +23,7 @@ def dereverb_audio(
 ):
     """
     Remove reverb from audio file (loads model each time)
-    
-    Args:
-        input_audio_path: Path to reverberant audio (.wav, .flac, .mp3)
-        output_audio_path: Path to save clean audio
-        model_path: Path to trained model checkpoint (.pth)
-        device: 'cuda' or 'cpu'
-    
-    Returns:
-        clean_audio: Processed audio tensor
-        sr: Sample rate
     """
-    
     print(f"Using device: {device}")
     print(f"Input: {input_audio_path}")
     print(f"Output: {output_audio_path}")
@@ -78,19 +67,7 @@ def dereverb_audio_with_model(
 ):
     """
     Remove reverb from audio file (model already loaded)
-    
-    Args:
-        input_audio_path: Path to reverberant audio
-        output_audio_path: Path to save clean audio
-        model: Pre-loaded UNet model
-        device: 'cuda' or 'cpu'
-        verbose: Print detailed progress
-    
-    Returns:
-        clean_audio: Processed audio tensor
-        sr: Sample rate
     """
-    
     if verbose:
         print(f"Processing: {Path(input_audio_path).name}")
     
@@ -115,27 +92,12 @@ def dereverb_batch(
     verbose=True
 ):
     """
-    Process multiple audio files (OPTIMIZED: loads model once)
-    
-    Args:
-        input_dir: Directory containing reverberant audio files
-        output_dir: Directory to save clean audio files
-        model_path: Path to trained model checkpoint
-        file_extension: Specific extension to process (e.g., '*.wav') or None for all
-        output_format: 'match' (keep original), 'wav', or 'flac'
-        device: 'cuda' or 'cpu'
-        verbose: Print detailed progress
-    
-    Returns:
-        success_count: Number of successfully processed files
-        error_count: Number of failed files
+    Process multiple audio files (loads model once)
     """
-    
     input_path = Path(input_dir)
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True, parents=True)
     
-    # Find audio files
     print("Scanning for audio files...")
     if file_extension is None:
         audio_files = []
@@ -154,10 +116,9 @@ def dereverb_batch(
     
     print(f"Found {len(audio_files)} audio files in {input_dir}")
     print(f"Output format: {output_format}")
-    print(f"Pipeline: dB-scale, n_fft={N_FFT}, hop={HOP_LENGTH}")
+    print(f"Pipeline: dB with ref, n_fft={N_FFT}, hop={HOP_LENGTH}")
     print("="*60)
     
-    # Load model once for all files
     print(f"\nLoading model on {device}...")
     checkpoint = torch.load(model_path, map_location=device)
 
@@ -184,13 +145,11 @@ def dereverb_batch(
     error_count = 0
     skipped_count = 0
     
-    # Process each file with tqdm progress bar
     pbar = tqdm(audio_files, desc="Processing audio", unit="files", ncols=100)
     
     for audio_file in pbar:
         pbar.set_description(f"Processing: {audio_file.name[:30]}")
         
-        # Determine output format
         if output_format == 'match':
             output_ext = audio_file.suffix
         elif output_format == 'flac':
@@ -198,11 +157,10 @@ def dereverb_batch(
         elif output_format == 'wav':
             output_ext = '.wav'
         else:
-            raise ValueError(f"Invalid output_format: {output_format}. Use 'match', 'flac', or 'wav'")
+            raise ValueError(f"Invalid output_format: {output_format}")
         
         output_file = output_path / f"clean_{audio_file.stem}{output_ext}"
         
-        # Skip if already processed
         if output_file.exists():
             skipped_count += 1
             success_count += 1
@@ -228,7 +186,6 @@ def dereverb_batch(
     
     pbar.close()
     
-    # Final summary
     print("\n" + "="*60)
     print("BATCH PROCESSING COMPLETE")
     print(f"  Successful: {success_count}/{len(audio_files)}")
@@ -241,7 +198,7 @@ def dereverb_batch(
 
 
 def _process_audio(input_path, output_path, model, device, verbose=True):
-    """Process audio using dB-scale spectrogram pipeline"""
+    """Process audio using dB spectrogram pipeline with reference scaling"""
     
     if verbose:
         print("[2/5] Loading audio...")
@@ -254,19 +211,20 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
     if verbose:
         print(f"[3/5] Converting to dB spectrogram (n_fft={N_FFT}, hop={HOP_LENGTH})...")
     
-    # Get dB spectrogram and phase
-    magnitude_db, phase = audio_to_spectrogram(audio, return_db=True)
-    original_shape = magnitude_db.shape
+    # Get dB spectrogram, phase, and reference
+    magnitude_db, phase, ref = audio_to_spectrogram(audio)
     
     if verbose:
-        print(f"  Original spectrogram: {original_shape}")
+        print(f"  Spectrogram shape: {magnitude_db.shape}")
+        print(f"  Phase shape: {phase.shape}")
         print(f"  dB range: [{magnitude_db.min():.1f}, {magnitude_db.max():.1f}]")
+        print(f"  Reference: {ref:.6f}")
     
     # Normalize to [0, 1]
     magnitude_norm = normalize_db_spectrogram(magnitude_db)
     
     # Pad to model input size
-    magnitude_padded, _ = pad_spectrogram(
+    magnitude_padded, pad_info = pad_spectrogram(
         magnitude_norm, 
         target_frames=TARGET_FRAMES, 
         target_freq=TARGET_FREQ
@@ -282,6 +240,10 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
     with torch.no_grad():
         clean_padded = model(model_input).cpu().squeeze(0).squeeze(0)
     
+    if verbose:
+        print(f"  Model output: {clean_padded.shape}")
+        print(f"  Output range (raw): [{clean_padded.min():.3f}, {clean_padded.max():.3f}]")
+    
     # Handle NaN/Inf
     if torch.isnan(clean_padded).any() or torch.isinf(clean_padded).any():
         if verbose:
@@ -292,10 +254,23 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
     clean_padded = torch.clamp(clean_padded, 0, 1)
     
     # Unpad to original size
-    clean_norm = unpad_spectrogram(clean_padded, original_shape)
+    clean_norm = unpad_spectrogram(clean_padded, pad_info)
     
     if verbose:
-        print(f"  Output range: [{clean_norm.min():.3f}, {clean_norm.max():.3f}]")
+        print(f"  After unpad: {clean_norm.shape}")
+        print(f"  Phase shape: {phase.shape}")
+    
+    # Ensure shapes match exactly
+    if clean_norm.shape != phase.shape:
+        if verbose:
+            print(f"  ⚠️ Shape mismatch! Cropping...")
+        min_freq = min(clean_norm.shape[-2], phase.shape[-2])
+        min_time = min(clean_norm.shape[-1], phase.shape[-1])
+        clean_norm = clean_norm[..., :min_freq, :min_time]
+        phase = phase[..., :min_freq, :min_time]
+    
+    if verbose:
+        print(f"  Final norm range: [{clean_norm.min():.3f}, {clean_norm.max():.3f}]")
     
     # Denormalize back to dB
     clean_db = denormalize_db_spectrogram(clean_norm)
@@ -304,8 +279,8 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
         print(f"[5/5] Converting back to audio...")
         print(f"  dB range: [{clean_db.min():.1f}, {clean_db.max():.1f}]")
     
-    # Convert to audio
-    clean_audio = spectrogram_to_audio(clean_db, phase, from_db=True)
+    # Convert to audio using the reference from input
+    clean_audio = spectrogram_to_audio(clean_db, phase, ref)
     
     # Length matching
     original_length = audio.shape[-1]
@@ -315,7 +290,7 @@ def _process_audio(input_path, output_path, model, device, verbose=True):
         padding = original_length - clean_audio.shape[-1]
         clean_audio = F.pad(clean_audio, (0, padding))
     
-    # Prevent clipping
+    # Gentle normalization - only if clipping
     max_val = torch.max(torch.abs(clean_audio))
     if max_val > 1.0:
         clean_audio = clean_audio / max_val * 0.99
@@ -343,7 +318,7 @@ if __name__ == '__main__':
     dereverb_batch(
         input_dir='/scratch/egbueze.m/reverb_dataset/reverb',
         output_dir='/scratch/egbueze.m/reverb_dataset/clean_output',
-        model_path='/scratch/egbueze.m/checkpoints_normalized/best_model.pth',
+        model_path='/scratch/egbueze.m/checkpoints_db/best_model.pth',
         file_extension=None,
         output_format='wav',
         device='cuda'
