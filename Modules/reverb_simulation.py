@@ -51,6 +51,7 @@ def create_reverb_from_librispeech(
     print(f"Found {total_source_files} source audio files")
     print(f"Expected total samples: {expected_total_samples}")
     print(f"Settings: Frequency Dependent rt60 | Adaptive rt60 | rooms_per_audio={rooms_per_audio}")
+    print(f"RT60 range: 0.3-2.5s (robust)")
     
     processed_files = set()
     sample_idx = 0
@@ -101,11 +102,14 @@ def create_reverb_from_librispeech(
                 room_volume = np.prod(room_dim)
                 volume_factor = np.clip(room_volume / 400, 0.0, 1.0)
 
-                # TODO: update code to handle increased rt60 range
+                # Robust RT60 range: 0.3-2.5s
                 rt60_min = 0.3 + 0.2 * volume_factor
                 rt60_max = 1.5 + 1.0 * volume_factor
                 rt60 = np.random.uniform(rt60_min, rt60_max)
-                rt60_base = np.clip(rt60, 0.15, 1.2)       
+                rt60_base = np.clip(rt60, 0.15, 2.5)
+
+                # Adaptive max_order based on RT60
+                max_order = min(int(rt60_base * 20), 30)
 
                 if frequency_dependent_rt60:
                     try:
@@ -119,16 +123,16 @@ def create_reverb_from_librispeech(
                             rt60_base * (1.0 - tilt*0.6),    # 2000 Hz
                             rt60_base * (1.0 - tilt),        # 4000 Hz
                         ])
-                        rt60_bands = np.clip(rt60_bands, 0.1, 1.2)
+                        rt60_bands = np.clip(rt60_bands, 0.1, 2.5)  # Extended range
                         
                         absorption_coeffs = []
-                        for rt60 in rt60_bands:
+                        for rt60_band in rt60_bands:
                             try:
-                                e_abs, _ = pra.inverse_sabine(rt60, room_dim)
-                                e_abs = np.clip(e_abs, 0.01, 0.98)
+                                e_abs, _ = pra.inverse_sabine(rt60_band, room_dim)
+                                e_abs = np.clip(e_abs, 0.01, 0.99)  # Tighter clip
                                 absorption_coeffs.append(e_abs)
                             except:
-                                materials = pra.Material(rt60_base)
+                                materials = pra.Material(energy_absorption=0.5)
                                 break
                         else:
                             material_dict = {
@@ -139,16 +143,21 @@ def create_reverb_from_librispeech(
                             materials = pra.Material(energy_absorption=material_dict)
                             
                     except Exception as e:
-                        materials = pra.Material(rt60_base)
+                        materials = pra.Material(energy_absorption=0.5)
                 else:
-                    materials = pra.Material(rt60_base)
+                    try:
+                        e_abs, _ = pra.inverse_sabine(rt60_base, room_dim)
+                        e_abs = np.clip(e_abs, 0.01, 0.99)
+                        materials = pra.Material(energy_absorption=e_abs)
+                    except:
+                        materials = pra.Material(energy_absorption=0.5)
                 
-                # Create room with optimizations
+                # Create room with adaptive max_order
                 room = pra.ShoeBox(
                     room_dim,
                     fs=sr,
                     materials=materials,
-                    max_order=15
+                    max_order=max_order
                 )
 
                 # Generate positions
@@ -173,10 +182,10 @@ def create_reverb_from_librispeech(
                     skipped_count += 1
                     continue
 
-                # DRR-preserving normalization
+                # DRR-preserving normalization (more conservative for strong reverb)
                 max_clean = np.max(np.abs(audio))
                 if max_clean > 0:
-                    target_peak = 0.9
+                    target_peak = 0.8
                     scale_multiplier = target_peak / max_clean
                     
                     clean_audio_norm = audio * scale_multiplier
@@ -186,10 +195,11 @@ def create_reverb_from_librispeech(
                     skipped_count += 1
                     continue
 
-                # Ensure same length
-                min_len = min(len(reverb_audio), len(clean_audio_norm))
-                reverb_audio = reverb_audio[:min_len]
-                clean_audio_norm = clean_audio_norm[:min_len]
+                # Pad clean to match reverb length (preserve reverb tail)
+                if len(reverb_audio) > len(clean_audio_norm):
+                    clean_audio_norm = np.pad(clean_audio_norm, (0, len(reverb_audio) - len(clean_audio_norm)))
+                else:
+                    reverb_audio = np.pad(reverb_audio, (0, len(clean_audio_norm) - len(reverb_audio)))
                 
                 # Final type conversion
                 reverb_audio = reverb_audio.astype(np.float32)
@@ -258,7 +268,7 @@ def _save_checkpoint(checkpoint_file, processed_files, sample_count):
 if __name__ == '__main__':
     create_reverb_from_librispeech(
         librispeech_root='/scratch/egbueze.m/librispeech/LibriSpeech',
-        output_dir='/scratch/egbueze.m/reverb_dataset',
+        output_dir='/scratch/egbueze.m/reverb_dataset_v2',
         subset='train-clean-100',
         rooms_per_audio=3,
         frequency_dependent_rt60=True
