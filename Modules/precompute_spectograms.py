@@ -1,112 +1,64 @@
+from audio_utils import (
+    audio_to_spectrogram,
+    normalize_db_spectrogram,
+    pad_spectrogram,
+    N_FFT, HOP_LENGTH, TARGET_FRAMES, TARGET_FREQ, DB_MIN, DB_MAX
+)
 import torch
 import torchaudio
 from pathlib import Path
 from tqdm import tqdm
-from audio_utils import audio_to_spectrogram, resize_spectrogram
 import numpy as np
 import time
 
 
-def precompute_all_spectrograms(data_dir, output_dir, normalize=True):
+def precompute_spectrograms(data_dir, output_dir):
     """
-    Precompute spectrograms with normalization and progress tracking
+    Precompute dB-normalized spectrograms.
     
     Args:
         data_dir: Path to dataset with reverb/ and clean/ subdirectories
         output_dir: Where to save precomputed spectrograms
-        normalize: Whether to apply global normalization
     """
     reverb_dir = Path(data_dir) / 'reverb'
     clean_dir = Path(data_dir) / 'clean'
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
     
-    print("Scanning directories...")
+    print("="*70)
+    print("SPECTROGRAM PRECOMPUTATION V2 (dB-scale)")
+    print("="*70)
+    print(f"  n_fft:         {N_FFT}")
+    print(f"  hop_length:    {HOP_LENGTH}")
+    print(f"  target_frames: {TARGET_FRAMES}")
+    print(f"  target_freq:   {TARGET_FREQ}")
+    print(f"  dB range:      [{DB_MIN}, {DB_MAX}]")
+    print("="*70)
+    
+    # Scan files
+    print("\nScanning directories...")
     reverb_files = sorted(list(reverb_dir.glob('*.flac')))
     clean_files = sorted(list(clean_dir.glob('*.flac')))
     
-    assert len(reverb_files) == len(clean_files), f"Mismatch: {len(reverb_files)} reverb, {len(clean_files)} clean"
+    assert len(reverb_files) == len(clean_files), \
+        f"Mismatch: {len(reverb_files)} reverb, {len(clean_files)} clean"
     
     total_files = len(reverb_files)
     print(f"Found {total_files} audio file pairs")
-    print("="*70)
     
-    stats_file = output_dir / 'normalization_stats.pt'
-    
-    if normalize and stats_file.exists():
-        print("\n📂 Found existing normalization_stats.pt, loading...")
-        stats = torch.load(stats_file)
-        global_norm = stats['global_norm_used']
-        all_max_values = None
-        print(f"   Loaded global_norm: {global_norm:.2f}")
-        print("   Skipping Pass 1!")
-    elif normalize:
-        print("\n📊 PASS 1/2: Collecting statistics for normalization")
-        print("-"*70)
-        
-        all_max_values = []
-        
-        # First pass - collect all max values with progress bar
-        pbar = tqdm(
-            zip(reverb_files, clean_files),
-            total=total_files,
-            desc="Analyzing",
-            unit="pairs",
-            ncols=100
-        )
-        
-        for reverb_file, clean_file in pbar:
-            # Update with current file
-            pbar.set_description(f"Analyzing: {reverb_file.stem[:25]}")
-            
-            try:
-                reverb_audio, _ = torchaudio.load(str(reverb_file))
-                clean_audio, _ = torchaudio.load(str(clean_file))
-                
-                reverb_mag, _ = audio_to_spectrogram(reverb_audio, n_fft=512, hop_length=256)
-                clean_mag, _ = audio_to_spectrogram(clean_audio, n_fft=512, hop_length=256)
-                
-                reverb_spec = resize_spectrogram(reverb_mag, target_size=(256, 256)).squeeze(0)
-                clean_spec = resize_spectrogram(clean_mag, target_size=(256, 256)).squeeze(0)
-                
-                max_val = max(reverb_spec.max().item(), clean_spec.max().item())
-                all_max_values.append(max_val)
-                
-                # Update stats in postfix
-                if len(all_max_values) % 50 == 0:
-                    current_99 = np.percentile(all_max_values, 99)
-                    pbar.set_postfix({'99%ile': f'{current_99:.2f}'})
-                    
-            except Exception as e:
-                tqdm.write(f"⚠️ Error in {reverb_file.name}: {str(e)[:50]}")
-                continue
-        
-        pbar.close()
-        
-        # Calculate normalization statistics
-        global_norm = np.percentile(all_max_values, 99)
-        
-        print(f"\n✅ Statistics collected from {len(all_max_values)} files:")
-        print(f"   Max value: {np.max(all_max_values):.2f}")
-        print(f"   Mean max: {np.mean(all_max_values):.2f} ± {np.std(all_max_values):.2f}")
-        print(f"   99th percentile (used for norm): {global_norm:.2f}")
-        
-        print("\n🔄 PASS 2/2: Processing and saving spectrograms")
-        print("-"*70)
-    else:
-        all_max_values = None
-        global_norm = None
-        print("\n🔄 Processing spectrograms (no normalization)")
-        print("-"*70)
-    
-    # Check for existing files to skip
+    # Check for existing files to resume
     existing_files = list(output_dir.glob('spec_*.pt'))
     start_idx = len(existing_files)
     
     if start_idx > 0:
-        print(f"📂 Found {start_idx} existing spectrograms, resuming from index {start_idx}")
+        print(f"📂 Found {start_idx} existing spectrograms, resuming...")
     
-    # Main processing pass with detailed progress
+    # Stats collection
+    all_differences = []
+    freq_dims = []
+    time_dims = []
+    
+    # Processing
     pbar = tqdm(
         enumerate(zip(reverb_files, clean_files)),
         total=total_files,
@@ -121,116 +73,146 @@ def precompute_all_spectrograms(data_dir, output_dir, normalize=True):
     start_time = time.time()
     
     for idx, (reverb_file, clean_file) in pbar:
-        # Skip if already processed
         output_file = output_dir / f'spec_{idx:06d}.pt'
+        
+        # Skip if already processed
         if output_file.exists():
-            processed_count += 1
             continue
         
-        # Update description
-        pbar.set_description(f"Processing: {reverb_file.stem[:25]}")
-        
         try:
-            reverb_audio, _ = torchaudio.load(str(reverb_file))
+            # Load audio
+            reverb_audio, sr = torchaudio.load(str(reverb_file))
             clean_audio, _ = torchaudio.load(str(clean_file))
             
-            reverb_mag, _ = audio_to_spectrogram(reverb_audio, n_fft=512, hop_length=256)
-            clean_mag, _ = audio_to_spectrogram(clean_audio, n_fft=512, hop_length=256)
+            # Convert to dB spectrograms
+            reverb_db, reverb_phase = audio_to_spectrogram(reverb_audio, return_db=True)
+            clean_db, clean_phase = audio_to_spectrogram(clean_audio, return_db=True)
             
-            reverb_spec = resize_spectrogram(reverb_mag, target_size=(256, 256)).squeeze(0)
-            clean_spec = resize_spectrogram(clean_mag, target_size=(256, 256)).squeeze(0)
+            # Track original dimensions (first few files)
+            if len(freq_dims) < 10:
+                freq_dims.append(reverb_db.shape[0])
+                time_dims.append(reverb_db.shape[1])
             
-            # Store original max for reference
-            original_max = max(reverb_spec.max().item(), clean_spec.max().item())
+            # Normalize to [0, 1]
+            reverb_norm = normalize_db_spectrogram(reverb_db)
+            clean_norm = normalize_db_spectrogram(clean_db)
             
-            # ============ NORMALIZATION ============
-            if normalize:
-                # USE GLOBAL NORM FOR ALL FILES
-                reverb_spec = reverb_spec / (global_norm + 1e-7)
-                clean_spec = clean_spec / (global_norm + 1e-7)
-                
-                # Ensure [0, 1] range
-                reverb_spec = torch.clamp(reverb_spec, 0, 1)
-                clean_spec = torch.clamp(clean_spec, 0, 1)
-                
-                max_val = global_norm  # Store the global norm used
-            else:
-                max_val = None
-            # ========================================
+            # Track differences (for stats)
+            diff = torch.abs(reverb_norm - clean_norm).mean().item()
+            all_differences.append(diff)
             
+            # Pad to fixed size
+            reverb_padded, orig_shape = pad_spectrogram(reverb_norm, target_frames=TARGET_FRAMES, target_freq=TARGET_FREQ)
+            clean_padded, _ = pad_spectrogram(clean_norm, target_frames=TARGET_FRAMES, target_freq=TARGET_FREQ)
+            
+            # Save
             torch.save({
-                'reverb': reverb_spec,
-                'clean': clean_spec,
+                'reverb': reverb_padded,
+                'clean': clean_padded,
+                'reverb_phase': reverb_phase,  # Keep phase for reconstruction
+                'clean_phase': clean_phase,
+                'original_shape': orig_shape,
                 'reverb_file': reverb_file.name,
-                'clean_file': clean_file.name, 
-                'normalized': normalize,
-                'max_val': max_val if normalize else None,
-                'original_max': original_max  # Keep track of original for debugging
+                'clean_file': clean_file.name,
+                'sample_rate': sr,
+                # Metadata for inference
+                'n_fft': N_FFT,
+                'hop_length': HOP_LENGTH,
+                'db_min': DB_MIN,
+                'db_max': DB_MAX,
             }, output_file)
             
             processed_count += 1
             
-            # Update stats every 100 files
+            # Update progress
             if processed_count % 100 == 0:
-                elapsed = time.time() - start_time
-                rate = processed_count / elapsed
-                eta = (total_files - idx) / rate if rate > 0 else 0
-                
+                avg_diff = np.mean(all_differences[-100:]) if all_differences else 0
                 pbar.set_postfix({
                     'saved': processed_count,
-                    'errors': error_count,
-                    'rate': f'{rate:.1f}/s',
-                    'eta': f'{eta/60:.1f}m'
+                    'avg_diff': f'{avg_diff:.4f}',
+                    'errors': error_count
                 })
                 
         except Exception as e:
             error_count += 1
-            tqdm.write(f"⚠️ Error processing {reverb_file.name}: {str(e)[:50]}")
-            pbar.set_postfix({'saved': processed_count, 'errors': error_count})
+            tqdm.write(f"⚠️ Error: {reverb_file.name}: {str(e)[:50]}")
             continue
     
     pbar.close()
     
-    # Save normalization statistics s(only if we computed them this run)
-    if normalize and all_max_values is not None:
+    # Save metadata
+    if all_differences:
         stats = {
-            'normalized': True,
-            'method': 'global_percentile',
-            'global_max': np.max(all_max_values),
-            'global_mean_max': np.mean(all_max_values),
-            'global_std_max': np.std(all_max_values),
-            'percentile_99': np.percentile(all_max_values, 99),
-            'percentile_95': np.percentile(all_max_values, 95),
-            'percentile_90': np.percentile(all_max_values, 90),
-            'global_norm_used': global_norm,
-            'total_files': len(all_max_values)
+            'version': 2,
+            'n_fft': N_FFT,
+            'hop_length': HOP_LENGTH,
+            'target_frames': TARGET_FRAMES,
+            'db_min': DB_MIN,
+            'db_max': DB_MAX,
+            'total_files': processed_count,
+            'mean_difference': float(np.mean(all_differences)),
+            'std_difference': float(np.std(all_differences)),
+            'max_difference': float(np.max(all_differences)),
+            'freq_dim': int(np.mean(freq_dims)) if freq_dims else None,
+            'time_dim_mean': float(np.mean(time_dims)) if time_dims else None,
         }
-        torch.save(stats, output_dir / 'normalization_stats.pt')
+        torch.save(stats, output_dir / 'preprocessing_stats.pt')
         
-        print("\n📈 Final normalization statistics saved:")
-        print(f"   Files analyzed: {stats['total_files']}")
-        print(f"   Global max: {stats['global_max']:.2f}")
-        print(f"   Mean max: {stats['global_mean_max']:.2f} ± {stats['global_std_max']:.2f}")
-        print(f"   Percentiles: 90th={stats['percentile_90']:.2f}, "
-              f"95th={stats['percentile_95']:.2f}, 99th={stats['percentile_99']:.2f}")
-        print(f"   Normalization value: {global_norm:.2f}")
+        print("\n" + "="*70)
+        print("PRECOMPUTATION COMPLETE")
+        print("="*70)
+        print(f"  Total processed: {processed_count}/{total_files}")
+        print(f"  Errors: {error_count}")
+        print(f"  Time: {(time.time() - start_time)/60:.1f} minutes")
+        print(f"\n📊 SPECTROGRAM STATISTICS:")
+        print(f"  Mean L1 difference: {stats['mean_difference']:.4f}")
+        print(f"  Std L1 difference:  {stats['std_difference']:.4f}")
+        print(f"  Max L1 difference:  {stats['max_difference']:.4f}")
+        print(f"  Frequency bins:     {stats['freq_dim']}")
+        print(f"  Avg time frames:    {stats['time_dim_mean']:.0f}")
+        
+        if stats['mean_difference'] > 0.02:
+            print("\n  ✅ Good separation between reverb and clean!")
+        elif stats['mean_difference'] > 0.01:
+            print("\n  🟡 Moderate separation - should be learnable")
+        else:
+            print("\n  🔴 Low separation - may need stronger reverb")
+        
+        print("="*70)
+
+
+def verify_preprocessing(output_dir, num_samples=10):
+    """
+    Verify the preprocessed spectrograms look correct.
+    """
+    output_dir = Path(output_dir)
+    spec_files = sorted(list(output_dir.glob('spec_*.pt')))[:num_samples]
     
-    # Final summary
-    elapsed_total = time.time() - start_time
-    print("\n" + "="*70)
-    print("✅ PRECOMPUTATION COMPLETE")
-    print("="*70)
-    print(f"   Total processed: {processed_count}/{total_files}")
-    print(f"   Errors: {error_count}")
-    print(f"   Time elapsed: {elapsed_total/60:.1f} minutes")
-    print(f"   Average rate: {processed_count/elapsed_total:.1f} files/second")
-    print(f"   Output directory: {output_dir}")
-    print("="*70)
+    print(f"\nVerifying {len(spec_files)} samples...")
+    
+    for spec_file in spec_files:
+        data = torch.load(spec_file)
+        reverb = data['reverb']
+        clean = data['clean']
+        
+        diff = torch.abs(reverb - clean).mean().item()
+        
+        print(f"  {spec_file.name}: shape={reverb.shape}, "
+              f"range=[{reverb.min():.3f}, {reverb.max():.3f}], "
+              f"diff={diff:.4f}")
+    
+    # Load stats
+    stats_file = output_dir / 'preprocessing_stats.pt'
+    if stats_file.exists():
+        stats = torch.load(stats_file)
+        print(f"\n  Overall mean diff: {stats['mean_difference']:.4f}")
 
 
 if __name__ == '__main__':
-    precompute_all_spectrograms(
+    precompute_spectrograms(
         data_dir='/scratch/egbueze.m/reverb_dataset',
-        output_dir='/scratch/egbueze.m/precomputed_specs_normalized',
-        normalize=True
+        output_dir='/scratch/egbueze.m/precomputed_specs_normalized'    
     )
+    
+    # Verify
+    verify_preprocessing('/scratch/egbueze.m/precomputed_specs_normalized')
