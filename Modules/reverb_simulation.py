@@ -101,8 +101,9 @@ def create_reverb_from_librispeech(
                 room_volume = np.prod(room_dim)
                 volume_factor = np.clip(room_volume / 400, 0.0, 1.0)
 
-                rt60_min = 0.2 + 0.2 * volume_factor
-                rt60_max = 0.5 + 0.5 * volume_factor
+                # TODO: update code to handle increased rt60 range
+                rt60_min = 0.3 + 0.2 * volume_factor
+                rt60_max = 1.5 + 1.0 * volume_factor
                 rt60 = np.random.uniform(rt60_min, rt60_max)
                 rt60_base = np.clip(rt60, 0.15, 1.2)       
 
