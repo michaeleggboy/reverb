@@ -112,18 +112,18 @@ def train_model(
             print(f"\n📂 Loading checkpoint from epoch {resume_epoch}: {specific_checkpoint}")
         else:
             print(f"\n⚠️ WARNING: No checkpoint found for epoch {resume_epoch}")
-            print(f"   Looking for: {specific_checkpoint}")
+            print(f"  Looking for: {specific_checkpoint}")
             
             # List available checkpoints
             epoch_checkpoints = sorted(checkpoint_dir.glob('checkpoint_epoch_*.pth'))
             if epoch_checkpoints:
-                print("\n   Available epoch checkpoints:")
+                print("\n  Available epoch checkpoints:")
                 for cp in epoch_checkpoints:
                     epoch_num = cp.stem.replace('checkpoint_epoch_', '')
                     print(f"     - Epoch {epoch_num}")
             
             # Ask user if they want to continue
-            response = input("\n   Continue without loading checkpoint? (y/n): ")
+            response = input("\n. Continue without loading checkpoint? (y/n): ")
             if response.lower() != 'y':
                 exit(0)
     
@@ -143,9 +143,9 @@ def train_model(
 
         if 'criterion_state_dict' in checkpoint:
             criterion.load_state_dict(checkpoint['criterion_state_dict'])
-            print(f"   Loaded loss weights from checkpoint")
+            print(f"✓ Loaded loss weights from checkpoint")
         else:
-            print(f"   ⚠️ No loss weights in checkpoint - starting fresh")
+            print(f"⚠️ No loss weights in checkpoint - starting fresh")
         
         # Handle force_resume - reset learning rate and scheduler
         if force_resume:
@@ -155,12 +155,12 @@ def train_model(
                 param_group['lr'] = learning_rate
             # Don't load scheduler state - let it start fresh
             if scheduler:
-                print(f"   Scheduler reset - will reduce LR on plateau with patience={scheduler.patience}")
+                print(f"  Scheduler reset - will reduce LR on plateau with patience={scheduler.patience}")
         else:
             # Normal mode - load scheduler state if available
             if scheduler and 'scheduler_state_dict' in checkpoint:
                 scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-                print(f"   Loaded scheduler state (current LR: {optimizer.param_groups[0]['lr']:.6f})")
+                print(f"✓ Loaded scheduler state (current LR: {optimizer.param_groups[0]['lr']:.6f})")
         
         print(f"✓ Loaded checkpoint from epoch {start_epoch}")
         print(f"  Train loss at epoch {start_epoch}: {checkpoint.get('train_loss', 'N/A'):.4f}")
