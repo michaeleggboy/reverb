@@ -1,6 +1,36 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
+
+
+class PerceptualLoss(nn.Module):
+    """VGG-based perceptual loss for spectrograms"""
+    def __init__(self):
+        super().__init__()
+        vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1).features[:16]
+        self.vgg = vgg.eval()
+        for p in self.vgg.parameters():
+            p.requires_grad = False
+        
+        # VGG normalization stats
+        self.register_buffer('mean', torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer('std', torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+    
+    def forward(self, pred, target):
+        # Repeat single channel to 3 channels
+        pred_3ch = pred.repeat(1, 3, 1, 1)
+        target_3ch = target.repeat(1, 3, 1, 1)
+        
+        # Normalize for VGG
+        pred_norm = (pred_3ch - self.mean) / self.std
+        target_norm = (target_3ch - self.mean) / self.std
+        
+        # Get features
+        pred_feat = self.vgg(pred_norm)
+        target_feat = self.vgg(target_norm)
+        
+        return F.l1_loss(pred_feat, target_feat)
 
 
 class SpectralLoss(nn.Module):
@@ -10,17 +40,20 @@ class SpectralLoss(nn.Module):
     - Decoupled validity penalty (prevents gradient conflicts)
     - Stable log computation for audio (dB scale)
     - Multi-scale pooling (perceptually important)
-    - Cleaner implementation for faster convergence
+    - VGG perceptual loss
     """
-    def __init__(self, adaptive_weights=False, penalize_invalid=True):
+    def __init__(self, adaptive_weights=False, penalize_invalid=True, use_perceptual=True):
         super().__init__()
         self.adaptive_weights = adaptive_weights
         self.penalize_invalid = penalize_invalid
+        self.use_perceptual = use_perceptual
         
         if adaptive_weights:
-            # Learnable weights that can be optimized during training
             self.log_weight = nn.Parameter(torch.tensor(0.1))
             self.hf_weight = nn.Parameter(torch.tensor(0.02))
+        
+        if use_perceptual:
+            self.perceptual = PerceptualLoss()
         
     def forward(self, pred_spec, target_spec):
         """
@@ -28,7 +61,6 @@ class SpectralLoss(nn.Module):
             pred_spec: [B, C, F, T] predicted magnitude spectrogram
             target_spec: [B, C, F, T] target magnitude spectrogram
         """
-        # Ensure targets are valid (they should be from your data)
         target_spec = torch.clamp(target_spec, min=1e-4, max=1.0)
         
         # =============================================================
@@ -36,81 +68,65 @@ class SpectralLoss(nn.Module):
         # =============================================================
         validity_penalty = 0
         if self.penalize_invalid:
-            # Calculate penalties on RAW predictions (not clamped)
             negative_penalty = F.relu(-pred_spec).mean() * 2.0
             overflow_penalty = F.relu(pred_spec - 1.0).mean() * 2.0
             validity_penalty = negative_penalty + overflow_penalty
             
-            # Optional logging for debugging
             invalid_ratio = ((pred_spec < 0) | (pred_spec > 1)).float().mean()
             if invalid_ratio > 0.1:
                 print(f"⚠️ {invalid_ratio:.1%} invalid outputs! Range: [{pred_spec.min():.3f}, {pred_spec.max():.3f}]")
         
         # =============================================================
-        # STABLE PREDICTIONS for loss computation (not for penalty)
+        # STABLE PREDICTIONS for loss computation
         # =============================================================
-        # Clamp predictions to valid range for stable loss computation
-        # This doesn't affect gradients from validity penalty
         pred_stable = torch.clamp(pred_spec, min=1e-4, max=1.0)
         
         # =============================================================
         # AUDIO-SPECIFIC LOSSES
         # =============================================================
-        eps = 1e-7  # Small epsilon for numerical stability
+        eps = 1e-7
         
-        # 1. L1 Loss (base reconstruction)
+        # 1. L1 Loss
         l1_loss = F.l1_loss(pred_stable, target_spec)
         
-        # 2. MSE Loss (smooth gradients)
+        # 2. MSE Loss
         mse_loss = F.mse_loss(pred_stable, target_spec)
         
-        # 3. Stable Log Magnitude Loss (perceptually important for audio)
-        # Extra safety: ensure no zeros before log
+        # 3. Log Magnitude Loss
         pred_log = torch.log10(pred_stable + eps)
         target_log = torch.log10(target_spec + eps)
         log_loss = F.smooth_l1_loss(pred_log, target_log, beta=0.01)
         
-        # 4. Spectral Convergence (scale-invariant)
+        # 4. Spectral Convergence
         sc_num = torch.norm(target_spec - pred_stable, p='fro', dim=(-2, -1))
         sc_den = torch.norm(target_spec, p='fro', dim=(-2, -1)) + eps
         sc_loss = (sc_num / sc_den).mean()
         
-        # 5. Improved Gradient Loss (vectorized for efficiency)
+        # 5. Gradient Loss
         grad_loss = 0
-        # Time gradient
         if pred_stable.shape[-1] > 1:
             pred_grad_t = torch.diff(pred_stable, dim=-1)
             target_grad_t = torch.diff(target_spec, dim=-1)
             grad_loss += F.l1_loss(pred_grad_t, target_grad_t)
-        
-        # Frequency gradient
         if pred_stable.shape[-2] > 1:
             pred_grad_f = torch.diff(pred_stable, dim=-2)
             target_grad_f = torch.diff(target_spec, dim=-2)
             grad_loss += F.l1_loss(pred_grad_f, target_grad_f)
         
-        # 6. Multi-Scale Loss (perceptually important for audio)
+        # 6. Multi-Scale Loss
         multiscale_loss = 0
         scales = [2, 4, 8]
         valid_scales = 0
-        
         for scale in scales:
             if pred_stable.shape[-2] >= scale and pred_stable.shape[-1] >= scale:
-                # Pooling for multi-resolution analysis
                 pred_down = F.avg_pool2d(pred_stable, kernel_size=scale, stride=scale)
                 target_down = F.avg_pool2d(target_spec, kernel_size=scale, stride=scale)
-                
-                # L1 at this scale
                 scale_l1 = F.l1_loss(pred_down, target_down)
-                
-                # Log loss at this scale
                 pred_down_log = torch.log10(pred_down + eps)
                 target_down_log = torch.log10(target_down + eps)
                 scale_log = F.smooth_l1_loss(pred_down_log, target_down_log, beta=0.01)
-                
                 multiscale_loss += scale_l1 + 0.3 * scale_log
                 valid_scales += 1
-        
         if valid_scales > 0:
             multiscale_loss /= valid_scales
         
@@ -119,52 +135,50 @@ class SpectralLoss(nn.Module):
         target_energy = torch.sum(target_spec ** 2, dim=(-2, -1))
         energy_loss = F.l1_loss(pred_energy, target_energy)
         
-        # 8. High-Frequency Emphasis (cleaner implementation)
-        # Linear frequency weighting with sqrt for gentler emphasis
+        # 8. High-Frequency Emphasis
         freq_weights = torch.linspace(0.9, 1.1, pred_stable.shape[-2], device=pred_stable.device)
         freq_weights = torch.sqrt(freq_weights).view(1, 1, -1, 1)
         weighted_pred = pred_stable * freq_weights
         weighted_target = target_spec * freq_weights
         hf_loss = F.smooth_l1_loss(weighted_pred, weighted_target, beta=0.01)
         
+        # 9. Perceptual Loss (VGG)
+        perceptual_loss = 0
+        if self.use_perceptual:
+            perceptual_loss = self.perceptual(pred_stable, target_spec)
+        
         # =============================================================
         # WEIGHT DETERMINATION
         # =============================================================
         if self.adaptive_weights:
-            # Learnable weights bounded by sigmoid
-            log_weight = torch.sigmoid(self.log_weight) * 0.3  # Max 0.3
-            hf_weight = torch.sigmoid(self.hf_weight) * 0.1   # Max 0.1
+            log_weight = torch.sigmoid(self.log_weight) * 0.3
+            hf_weight = torch.sigmoid(self.hf_weight) * 0.1
         else:
-            # Fixed weights optimized for global normalization
             log_weight = 0.20
             hf_weight = 0.05
         
         # =============================================================
-        # COMBINE LOSSES (decoupled approach)
+        # COMBINE LOSSES
         # =============================================================
-        # Audio reconstruction losses (computed on stable predictions)
         spectral_loss = (
-            0.25 * l1_loss +          # Base reconstruction
-            0.15 * mse_loss +         # Smooth gradients
-            log_weight * log_loss +   # Perceptual (dB scale)
-            0.10 * sc_loss +          # Scale invariance
-            0.10 * grad_loss +        # Structure preservation
-            0.10 * multiscale_loss +  # Multi-resolution
-            0.05 * energy_loss +      # Energy conservation
-            hf_weight * hf_loss       # High-frequency clarity
+            0.20 * l1_loss +
+            0.10 * mse_loss +
+            log_weight * log_loss +
+            0.10 * sc_loss +
+            0.10 * grad_loss +
+            0.10 * multiscale_loss +
+            0.05 * energy_loss +
+            hf_weight * hf_loss +
+            0.10 * perceptual_loss
         )
         
-        # Total loss = audio losses + validity penalty (decoupled)
         total_loss = spectral_loss + validity_penalty
         
         return total_loss
 
 
 class MSEWithPenalty(nn.Module):
-    """
-    Simple MSE loss with validity penalty for comparison.
-    Uses same decoupled approach.
-    """
+    """Simple MSE loss with validity penalty for comparison."""
     def __init__(self, penalize_invalid=True):
         super().__init__()
         self.penalize_invalid = penalize_invalid
@@ -172,143 +186,13 @@ class MSEWithPenalty(nn.Module):
     def forward(self, pred_spec, target_spec):
         target_spec = torch.clamp(target_spec, min=1e-4, max=1.0)
         
-        # Decoupled validity penalty
         validity_penalty = 0
         if self.penalize_invalid:
             negative_penalty = F.relu(-pred_spec).mean() * 5.0
             overflow_penalty = F.relu(pred_spec - 1.0).mean() * 5.0
             validity_penalty = negative_penalty + overflow_penalty
         
-        # MSE on clamped predictions
         pred_stable = torch.clamp(pred_spec, min=1e-4, max=1.0)
         mse_loss = F.mse_loss(pred_stable, target_spec)
         
         return mse_loss + validity_penalty
-
-
-class CurriculumSpectralLoss(nn.Module):
-    """
-    Curriculum version with hybrid improvements.
-    Gradually introduces complex components while maintaining stability.
-    """
-    def __init__(self, max_epochs=100):
-        super().__init__()
-        self.max_epochs = max_epochs
-        self.current_epoch = 0
-        
-    def set_epoch(self, epoch):
-        """Update epoch for curriculum scheduling"""
-        self.current_epoch = epoch
-        
-    def get_weights(self):
-        """Progressive weight scheduling"""
-        if self.current_epoch < 10:
-            # Early: Focus on basic reconstruction
-            return {
-                'l1': 0.40,
-                'mse': 0.30,
-                'log': 0.05,
-                'sc': 0.10,
-                'grad': 0.10,
-                'multiscale': 0.05,
-                'energy': 0.00,
-                'hf': 0.00,
-                'validity': 1.0
-            }
-        elif self.current_epoch < 30:
-            # Mid: Add perceptual components
-            return {
-                'l1': 0.30,
-                'mse': 0.20,
-                'log': 0.10,
-                'sc': 0.10,
-                'grad': 0.10,
-                'multiscale': 0.10,
-                'energy': 0.05,
-                'hf': 0.05,
-                'validity': 1.0
-            }
-        else:
-            # Late: Full complexity
-            return {
-                'l1': 0.25,
-                'mse': 0.15,
-                'log': 0.15,
-                'sc': 0.10,
-                'grad': 0.10,
-                'multiscale': 0.10,
-                'energy': 0.05,
-                'hf': 0.10,
-                'validity': 1.0
-            }
-    
-    def forward(self, pred_spec, target_spec):
-        """Forward with curriculum and hybrid improvements"""
-        w = self.get_weights()
-        target_spec = torch.clamp(target_spec, min=1e-4, max=1.0)
-        
-        # Decoupled validity penalty (always active)
-        validity_penalty = 0
-        if w['validity'] > 0:
-            negative_penalty = F.relu(-pred_spec).mean() * 2.0
-            overflow_penalty = F.relu(pred_spec - 1.0).mean() * 2.0
-            validity_penalty = w['validity'] * (negative_penalty + overflow_penalty)
-        
-        # Stable predictions for loss computation
-        pred_stable = torch.clamp(pred_spec, min=1e-4, max=1.0)
-        
-        eps = 1e-7
-        total_loss = validity_penalty  # Start with penalty
-        
-        # Add weighted components based on curriculum
-        if w['l1'] > 0:
-            total_loss += w['l1'] * F.l1_loss(pred_stable, target_spec)
-        
-        if w['mse'] > 0:
-            total_loss += w['mse'] * F.mse_loss(pred_stable, target_spec)
-        
-        if w['log'] > 0:
-            pred_log = torch.log10(pred_stable + eps)
-            target_log = torch.log10(target_spec + eps)
-            total_loss += w['log'] * F.smooth_l1_loss(pred_log, target_log, beta=0.01)
-        
-        if w['sc'] > 0:
-            sc_num = torch.norm(target_spec - pred_stable, p='fro', dim=(-2, -1))
-            sc_den = torch.norm(target_spec, p='fro', dim=(-2, -1)) + eps
-            total_loss += w['sc'] * (sc_num / sc_den).mean()
-        
-        if w['grad'] > 0:
-            grad_loss = 0
-            if pred_stable.shape[-1] > 1:
-                grad_loss += F.l1_loss(torch.diff(pred_stable, dim=-1), 
-                                       torch.diff(target_spec, dim=-1))
-            if pred_stable.shape[-2] > 1:
-                grad_loss += F.l1_loss(torch.diff(pred_stable, dim=-2), 
-                                       torch.diff(target_spec, dim=-2))
-            total_loss += w['grad'] * grad_loss
-        
-        if w['multiscale'] > 0:
-            multiscale_loss = 0
-            valid_scales = 0
-            for scale in [2, 4, 8]:
-                if pred_stable.shape[-2] >= scale and pred_stable.shape[-1] >= scale:
-                    pred_down = F.avg_pool2d(pred_stable, kernel_size=scale, stride=scale)
-                    target_down = F.avg_pool2d(target_spec, kernel_size=scale, stride=scale)
-                    multiscale_loss += F.l1_loss(pred_down, target_down)
-                    valid_scales += 1
-            if valid_scales > 0:
-                total_loss += w['multiscale'] * (multiscale_loss / valid_scales)
-        
-        if w['energy'] > 0:
-            pred_energy = torch.sum(pred_stable ** 2, dim=(-2, -1))
-            target_energy = torch.sum(target_spec ** 2, dim=(-2, -1))
-            total_loss += w['energy'] * F.l1_loss(pred_energy, target_energy)
-        
-        if w['hf'] > 0:
-            freq_weights = torch.sqrt(torch.linspace(0.9, 1.1, pred_stable.shape[-2], 
-                                                    device=pred_stable.device))
-            freq_weights = freq_weights.view(1, 1, -1, 1)
-            total_loss += w['hf'] * F.smooth_l1_loss(pred_stable * freq_weights, 
-                                                     target_spec * freq_weights, beta=0.01)
-        
-        return total_loss
