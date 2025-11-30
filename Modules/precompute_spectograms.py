@@ -130,7 +130,7 @@ def precompute_spectrograms(
     # Save statistics
     if all_diffs:
         stats = {
-            'version': 2,  # Version 2 includes phase
+            'version': 2,
             'num_samples': processed,
             'mean_difference': sum(all_diffs) / len(all_diffs),
             'min_difference': min(all_diffs),
