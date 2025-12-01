@@ -1,11 +1,5 @@
 import unittest
 import sys
-from pathlib import Path
-
-# Add project root to path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
 import test_audio_utils
 import test_dataset
 import test_unet
@@ -17,11 +11,9 @@ import test_reverb_simulation
 def run_all_tests():
     """Run all test suites"""
     
-    # Create test suite
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     
-    # Add all test modules
     suite.addTests(loader.loadTestsFromModule(test_audio_utils))
     suite.addTests(loader.loadTestsFromModule(test_dataset))
     suite.addTests(loader.loadTestsFromModule(test_unet))
@@ -29,11 +21,9 @@ def run_all_tests():
     suite.addTests(loader.loadTestsFromModule(test_integration))
     suite.addTests(loader.loadTestsFromModule(test_reverb_simulation))
     
-    # Run tests
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     
-    # Print summary
     print("\n" + "="*60)
     print("TEST SUMMARY")
     print("="*60)
@@ -43,7 +33,6 @@ def run_all_tests():
     print(f"Errors: {len(result.errors)}")
     print("="*60)
     
-    # Return exit code
     return 0 if result.wasSuccessful() else 1
 
 
