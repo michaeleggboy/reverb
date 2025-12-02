@@ -219,7 +219,6 @@ def train_model(
                     scaler.step(optimizer)
                     scaler.update()
                     optimizer.zero_grad()
-                    torch.cuda.empty_cache()
             else:
                 pred_spec = model(reverb_spec)
                 loss = criterion(pred_spec, clean_spec)
@@ -230,13 +229,11 @@ def train_model(
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
                     optimizer.zero_grad()
-                    torch.cuda.empty_cache()
             
             train_loss += loss.item() * accumulation_steps
             train_pbar.set_postfix({'loss': f'{loss.item() * accumulation_steps:.4f}'})
             
         avg_train_loss = train_loss / len(train_loader)
-        torch.cuda.empty_cache()
         
         # Handle remaining gradients
         if (len(train_loader) % accumulation_steps) != 0:
