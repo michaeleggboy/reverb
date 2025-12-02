@@ -29,7 +29,7 @@ def dereverb_audio(
     print(f"Output: {output_audio_path}")
     
     print("\n[1/5] Loading model...")
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     if 'model_config' in checkpoint:
         model = UNet(**checkpoint['model_config']).to(device)
@@ -120,7 +120,7 @@ def dereverb_batch(
     print("="*60)
     
     print(f"\nLoading model on {device}...")
-    checkpoint = torch.load(model_path, map_location=device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     if 'model_config' in checkpoint:
         model = UNet(**checkpoint['model_config']).to(device)
