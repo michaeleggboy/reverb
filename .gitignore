@@ -3,4 +3,4 @@ Modules/__pycache__/*
 Modules/model_analysis.png
 Modules/model_diagnostics.txt
 Modules/*.wav
-Modules/test_linear_roundtrip.wav
+Modules/*.flac

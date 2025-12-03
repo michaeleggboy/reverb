@@ -48,9 +48,8 @@ class SpectralLoss(nn.Module):
         self.penalize_invalid = penalize_invalid
         self.use_perceptual = use_perceptual
         
-        if adaptive_weights:
-            self.log_weight = nn.Parameter(torch.tensor(0.1))
-            self.hf_weight = nn.Parameter(torch.tensor(0.02))
+        self.hf_weight_min = 0.10
+        self.log_weight_min = 0.15
         
         if use_perceptual:
             self.perceptual = PerceptualLoss()
@@ -151,11 +150,21 @@ class SpectralLoss(nn.Module):
         # WEIGHT DETERMINATION
         # =============================================================
         if self.adaptive_weights:
-            log_weight = torch.sigmoid(self.log_weight) * 0.3
-            hf_weight = torch.sigmoid(self.hf_weight) * 0.1
+            # Compute weights based on ERROR - higher error = higher weight
+            with torch.no_grad():
+                hf_error = F.l1_loss(weighted_pred, weighted_target).item()
+                log_error = F.l1_loss(pred_log, target_log).item()
+                l1_error = l1_loss.item()
+                
+                # Normalize errors relative to l1 (baseline)
+                total_error = hf_error + log_error + l1_error + 1e-7
+                
+                # Higher error → higher weight (inverse of what you had)
+                hf_weight = max(self.hf_weight_min, 0.3 * (hf_error / total_error))
+                log_weight = max(self.log_weight_min, 0.4 * (log_error / total_error))
         else:
-            log_weight = 0.20
-            hf_weight = 0.05
+            log_weight = 0.25
+            hf_weight = 0.15
         
         # =============================================================
         # COMBINE LOSSES
