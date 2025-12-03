@@ -75,8 +75,8 @@ def train_model(
         },
         {
             'params': criterion.parameters(), 
-            'lr': learning_rate * 0.1,  # 10x slower for loss weights 
-            'weight_decay': 0  # No weight decay for loss parameters
+            'lr': learning_rate * 0.1,
+            'weight_decay': 0
         }
     ])
 
