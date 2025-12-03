@@ -318,7 +318,7 @@ if __name__ == '__main__':
     dereverb_batch(
         input_dir='/scratch/egbueze.m/reverb_dataset/reverb',
         output_dir='/scratch/egbueze.m/reverb_dataset/clean_output',
-        model_path='/scratch/egbueze.m/checkpoints_db2/best_model.pth',
+        model_path='/scratch/egbueze.m/checkpoints_db/best_model.pth',
         file_extension=None,
         output_format='wav',
         device='cuda'

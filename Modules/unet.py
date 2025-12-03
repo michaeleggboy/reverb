@@ -38,7 +38,7 @@ class UNet(nn.Module):
         # Final output layer
         self.out = nn.Sequential(
             nn.Conv2d(features[0], out_channels, 1),
-            nn.Hardtanh(min_val=0, max_val=1)
+            nn.Sigmoid()  # Forces [0,1] output
         )
     
     def _double_conv(self, in_channels, out_channels):

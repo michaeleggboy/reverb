@@ -64,7 +64,7 @@ def train_model(
     print("\nInitializing model...")
     model = UNet(in_channels=1, out_channels=1).to(device)
 
-    criterion = SpectralLoss(adaptive_weights=False, use_perceptual=True).to(device)
+    criterion = SpectralLoss(adaptive_weights=True, use_perceptual=True).to(device)
     optimizer = torch.optim.AdamW([
         {
             'params': model.parameters(), 
@@ -356,7 +356,7 @@ if __name__ == '__main__':
         batch_size=32,
         learning_rate=3e-4,
         device='cuda',
-        checkpoint_dir='/scratch/egbueze.m/checkpoints_db2',
+        checkpoint_dir='/scratch/egbueze.m/checkpoints_db',
         save_every=2,
         accumulation_steps=2,
         use_amp=True,
