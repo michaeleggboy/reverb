@@ -130,7 +130,6 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
     print(f"  Reverb: {len(reverb_files)}")
     print(f"  Clean: {len(clean_files)}")
     
-    # ===== LOAD CHECKPOINT IF EXISTS =====
     checked_files = set()
     corrupted = []
     
@@ -149,7 +148,6 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
             checked_files = set()
             corrupted = []
     
-    # ===== CHECK FILES WITH TQDM =====
     print("\nChecking file integrity...")
     
     # Filter out already checked files
@@ -189,7 +187,6 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
         # Update postfix with stats
         pbar.set_postfix({'corrupted': len(corrupted)})
         
-        # ===== SAVE CHECKPOINT EVERY 500 FILES =====
         if len(checked_files) % 500 == 0:
             _save_integrity_checkpoint(
                 checkpoint_file,
@@ -199,7 +196,6 @@ def verify_file_integrity(dataset_dir, checkpoint_file=None):
     
     pbar.close()
     
-    # ===== FINAL RESULTS =====
     print()
     print("=" * 60)
     print("INTEGRITY CHECK COMPLETE")
@@ -346,10 +342,6 @@ def count_samples_by_rooms(dataset_dir):
     
     return room_counts
 
-
-# ==========================================
-# MAIN EXECUTION
-# ==========================================
 
 if __name__ == '__main__':
     dataset_path = '/scratch/egbueze.m/reverb_dataset'

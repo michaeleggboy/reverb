@@ -122,19 +122,16 @@ def train_model(
                     epoch_num = cp.stem.replace('checkpoint_epoch_', '')
                     print(f"     - Epoch {epoch_num}")
             
-            # Ask user if they want to continue
             response = input("\n. Continue without loading checkpoint? (y/n): ")
             if response.lower() != 'y':
                 exit(0)
     
     else:
-        # Normal checkpoint loading (latest) - always check unless specific epoch requested
         latest_checkpoint = checkpoint_dir / 'latest_checkpoint.pth'
         if latest_checkpoint.exists():
             checkpoint_to_load = latest_checkpoint
             print(f"\n📂 Loading LATEST checkpoint from: {latest_checkpoint}")
     
-    # Load the checkpoint if one was found
     if checkpoint_to_load:
         checkpoint = torch.load(checkpoint_to_load, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
