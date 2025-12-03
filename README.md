@@ -71,14 +71,13 @@ dereverb_audio(
 ## Architecture
 
 **U-Net Model:**
-- Input: 256×256 magnitude spectrogram
+- Input: 1040x512 magnitude spectrogram
 - Encoder: 4 downsampling blocks (64→128→256→512 features)
 - Bottleneck: 1024 features
 - Decoder: 4 upsampling blocks with skip connections
-- Output: Clean magnitude with Softplus activation
+- Output: Clean magnitude with Hardtanh activation
 
 **Audio Processing:**
-- STFT: n_fft=512, hop_length=256, Hann window
+- STFT: n_fft=2048, hop_length=512, Hann window
 - Phase preservation from original audio
-- Magnitude prediction with value clamping (0-5 range)
-
+- db max reference magnitude rescaling
