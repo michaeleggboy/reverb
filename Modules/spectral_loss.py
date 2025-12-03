@@ -159,7 +159,6 @@ class SpectralLoss(nn.Module):
                 # Normalize errors relative to l1 (baseline)
                 total_error = hf_error + log_error + l1_error + 1e-7
                 
-                # Higher error → higher weight (inverse of what you had)
                 hf_weight = max(self.hf_weight_min, 0.3 * (hf_error / total_error))
                 log_weight = max(self.log_weight_min, 0.4 * (log_error / total_error))
         else:
