@@ -139,8 +139,11 @@ def check_spectrogram_difference(spec_dir, num_samples=50):
 def diagnose_model_output(model, test_loader, device='cuda', verbose=True):
     """
     Comprehensive diagnosis for direct-output dereverberation model.
+    Supports both standard and mask-head UNet.
     """
     model.eval()
+    has_mask = hasattr(model, 'mask_out')
+    
     diagnostics = {
         'input_ranges': [],
         'output_ranges': [],
@@ -152,7 +155,8 @@ def diagnose_model_output(model, test_loader, device='cuda', verbose=True):
         'implicit_masks': [],
         'identity_losses': [],
         'model_losses': [],
-        'improvements': []
+        'improvements': [],
+        'mask_stats': [] if has_mask else None
     }
     
     with torch.no_grad():
@@ -162,7 +166,20 @@ def diagnose_model_output(model, test_loader, device='cuda', verbose=True):
             
             reverb = reverb.to(device)
             clean = clean.to(device)
-            pred = model(reverb)
+            
+            # Handle mask output if available
+            if has_mask:
+                pred, mask = model(reverb, return_mask=True)
+                diagnostics['mask_stats'].append({
+                    'mean': mask.mean().item(),
+                    'std': mask.std().item(),
+                    'min': mask.min().item(),
+                    'max': mask.max().item(),
+                    'zeros': (mask < 0.1).float().mean().item(),
+                    'ones': (mask > 0.9).float().mean().item()
+                })
+            else:
+                pred = model(reverb)
             
             # Loss comparison
             identity_l1 = F.l1_loss(reverb, clean).item()
@@ -224,6 +241,17 @@ def diagnose_model_output(model, test_loader, device='cuda', verbose=True):
         print("MODEL BEHAVIOR DIAGNOSIS")
         print("="*60)
         
+        if has_mask:
+            print(f"\n📊 MASK STATISTICS:")
+            mask_mean = np.mean([m['mean'] for m in diagnostics['mask_stats']])
+            mask_std = np.mean([m['std'] for m in diagnostics['mask_stats']])
+            mask_zeros = np.mean([m['zeros'] for m in diagnostics['mask_stats']])
+            mask_ones = np.mean([m['ones'] for m in diagnostics['mask_stats']])
+            print(f"  Mean value:    {mask_mean:.3f}")
+            print(f"  Std:           {mask_std:.3f}")
+            print(f"  Near-zero (<0.1): {mask_zeros:.1%}")
+            print(f"  Near-one (>0.9):  {mask_ones:.1%}")
+        
         print(f"\n📊 LOSS COMPARISON:")
         print(f"  Identity (do nothing) L1: {np.mean(diagnostics['identity_losses']):.6f}")
         print(f"  Model output L1:          {np.mean(diagnostics['model_losses']):.6f}")
@@ -274,14 +302,21 @@ def diagnose_model_output(model, test_loader, device='cuda', verbose=True):
 
 
 def visualize_model_behavior(model, test_loader, device='cuda', save_path=None):
-    """Create visual diagnosis of model behavior"""
+    """Create visual diagnosis of model behavior. Supports mask-head UNet."""
     model.eval()
+    has_mask = hasattr(model, 'mask_out')
     
     with torch.no_grad():
         reverb, clean = next(iter(test_loader))
         reverb = reverb.to(device)
         clean = clean.to(device)
-        pred = model(reverb)
+        
+        if has_mask:
+            pred, mask = model(reverb, return_mask=True)
+            mask_np = mask[0, 0].cpu().numpy()
+        else:
+            pred = model(reverb)
+            mask_np = None
         
         reverb_np = reverb[0, 0].cpu().numpy()
         clean_np = clean[0, 0].cpu().numpy()
@@ -291,7 +326,9 @@ def visualize_model_behavior(model, test_loader, device='cuda', save_path=None):
         pred_clean_diff = pred_np - clean_np
         reverb_pred_diff = reverb_np - pred_np
         
-        fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+        # Create figure with extra row for mask if available
+        n_rows = 3 if has_mask else 2
+        fig, axes = plt.subplots(n_rows, 3, figsize=(15, 4 * n_rows))
         
         im1 = axes[0, 0].imshow(reverb_np, aspect='auto', origin='lower', cmap='viridis')
         axes[0, 0].set_title('Input (Reverberant)')
@@ -323,6 +360,28 @@ def visualize_model_behavior(model, test_loader, device='cuda', save_path=None):
         axes[1, 2].set_title('Model Error')
         plt.colorbar(im6, ax=axes[1, 2])
         
+        # Mask visualization row
+        if has_mask:
+            im7 = axes[2, 0].imshow(mask_np, aspect='auto', origin='lower', cmap='gray', vmin=0, vmax=1)
+            axes[2, 0].set_title(f'Learned Mask (mean={mask_np.mean():.3f})')
+            plt.colorbar(im7, ax=axes[2, 0])
+            
+            # Mask histogram
+            axes[2, 1].hist(mask_np.flatten(), bins=50, edgecolor='black', alpha=0.7)
+            axes[2, 1].set_title('Mask Value Distribution')
+            axes[2, 1].set_xlabel('Mask Value')
+            axes[2, 1].set_ylabel('Count')
+            axes[2, 1].axvline(x=0.5, color='r', linestyle='--', label='0.5 threshold')
+            axes[2, 1].legend()
+            
+            # Mask vs clean energy correlation
+            clean_energy = clean_np
+            im8 = axes[2, 2].scatter(clean_energy.flatten()[::100], mask_np.flatten()[::100], 
+                                      alpha=0.3, s=1)
+            axes[2, 2].set_title('Mask vs Clean Energy')
+            axes[2, 2].set_xlabel('Clean Spectrogram Value')
+            axes[2, 2].set_ylabel('Mask Value')
+        
         plt.tight_layout()
         
         if save_path:
@@ -353,10 +412,10 @@ if __name__ == '__main__':
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     
+    # 4. Model diagnosis
     val_dataset = PrecomputedDataset('/scratch/egbueze.m/precomputed_specs_db')
     val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
     
-    # 4. Model diagnosis
     diagnostics = diagnose_model_output(model, val_loader)
     
     # 5. Visualization
