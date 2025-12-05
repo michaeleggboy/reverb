@@ -6,7 +6,7 @@ N_FFT = 2048
 HOP_LENGTH = 512
 TARGET_FRAMES = 512
 TARGET_FREQ = 1040  # n_fft//2 + 1 = 1025, padded to multiple of 16
-DB_MIN = -80.0
+DB_MIN = -60
 DB_MAX = 0.0
 
 

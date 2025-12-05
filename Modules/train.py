@@ -326,7 +326,7 @@ def train_model(
 
 if __name__ == '__main__':
     # Check if pre-computed specs exist
-    spec_dir = Path('/scratch/egbueze.m/precomputed_specs_db')
+    spec_dir = Path('/scratch/egbueze.m/precomputed_specs_db60')
     
     if not spec_dir.exists() or len(list(spec_dir.glob('*.pt'))) == 0:
         print("❌ No pre-computed spectrograms found!")
@@ -356,7 +356,7 @@ if __name__ == '__main__':
         batch_size=32,
         learning_rate=3e-4,
         device='cuda',
-        checkpoint_dir='/scratch/egbueze.m/checkpoints_mask',
+        checkpoint_dir='/scratch/egbueze.m/checkpoints_mask60',
         save_every=2,
         accumulation_steps=2,
         use_amp=True,
