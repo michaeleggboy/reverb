@@ -48,8 +48,6 @@ def audio_to_spectrogram(audio, n_fft=N_FFT, hop_length=HOP_LENGTH):
     
     # Store reference (max magnitude) for reconstruction
     ref = magnitude.max()
-    if ref < 1e-8:
-        ref = torch.tensor(1e-8)  # Prevent division by zero for silence
     
     # Convert to dB relative to reference
     magnitude_db = 20 * torch.log10(magnitude / ref + 1e-8)
