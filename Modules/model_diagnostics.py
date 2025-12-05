@@ -408,7 +408,7 @@ if __name__ == '__main__':
     
     # 3. Load and diagnose model
     model = UNet(in_channels=1, out_channels=1).to('cuda')
-    checkpoint = torch.load('/scratch/egbueze.m/checkpoints_db/best_model.pth')
+    checkpoint = torch.load('/scratch/egbueze.m/checkpoints_mask/best_model.pth')
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     
