@@ -225,9 +225,9 @@ if __name__ == '__main__':
     # Precompute spectrograms
     precompute_spectrograms(
         data_dir='/scratch/egbueze.m/reverb_dataset',
-        output_dir='/scratch/egbueze.m/precomputed_specs_db',
+        output_dir='/scratch/egbueze.m/precomputed_specs_db60',
         max_samples=None
     )
     
     # Verify
-    verify_preprocessing('/scratch/egbueze.m/precomputed_specs_db')
+    verify_preprocessing('/scratch/egbueze.m/precomputed_specs_db60')
