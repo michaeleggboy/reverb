@@ -1,6 +1,6 @@
 .DS_Store
 Modules/__pycache__/*
 Modules/model_analysis.png
-Modules/model_diagnostics.txt
+Modules/*.txt
 Modules/*.wav
 Modules/*.flac
