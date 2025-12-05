@@ -20,7 +20,7 @@ def audio_to_spectrogram(audio, n_fft=N_FFT, hop_length=HOP_LENGTH):
         hop_length: Hop length for STFT (default 512)
     
     Returns:
-        magnitude_db: dB-scaled magnitude spectrogram [-80, 0]
+        magnitude_db: dB-scaled magnitude spectrogram [DB_MIN, 0]
         phase: Phase spectrogram
         ref: Reference magnitude for reconstruction
     """
@@ -52,7 +52,7 @@ def audio_to_spectrogram(audio, n_fft=N_FFT, hop_length=HOP_LENGTH):
     # Convert to dB relative to reference
     magnitude_db = 20 * torch.log10(magnitude / ref + 1e-8)
     
-    # Clamp to [-80, 0] dB range
+    # Clamp to [DB_MIN, 0] dB range
     magnitude_db = torch.clamp(magnitude_db, min=DB_MIN, max=DB_MAX)
     
     return magnitude_db, phase, ref
@@ -63,7 +63,7 @@ def spectrogram_to_audio(magnitude_db, phase, ref, n_fft=N_FFT, hop_length=HOP_L
     Convert dB spectrogram + phase back to audio waveform.
     
     Args:
-        magnitude_db: dB-scaled magnitude spectrogram [-80, 0]
+        magnitude_db: dB-scaled magnitude spectrogram [DB_MIN, 0]
         phase: Phase spectrogram
         ref: Reference magnitude from audio_to_spectrogram
         n_fft: FFT window size
@@ -102,15 +102,15 @@ def spectrogram_to_audio(magnitude_db, phase, ref, n_fft=N_FFT, hop_length=HOP_L
 
 def normalize_db_spectrogram(spec_db):
     """
-    Normalize dB spectrogram from [-80, 0] to [0, 1].
+    Normalize dB spectrogram from [DB_MIN, 0] to [0, 1].
     
     Args:
-        spec_db: Spectrogram in dB scale [-80, 0]
+        spec_db: Spectrogram in dB scale [DB_MIN, 0]
     
     Returns:
         Normalized spectrogram in [0, 1]
     """
-    # Map [-80, 0] -> [0, 1]
+    # Map [DB_MIN, 0] -> [0, 1]
     spec_norm = (spec_db - DB_MIN) / (DB_MAX - DB_MIN)
     spec_norm = torch.clamp(spec_norm, 0, 1)
     return spec_norm
@@ -124,7 +124,7 @@ def denormalize_db_spectrogram(spec_norm):
         spec_norm: Normalized spectrogram in [0, 1]
     
     Returns:
-        Spectrogram in dB scale [-80, 0]
+        Spectrogram in dB scale [DB_MIN, 0]
     """
     spec_db = spec_norm * (DB_MAX - DB_MIN) + DB_MIN
     return spec_db
@@ -149,7 +149,7 @@ def pad_spectrogram(spec, target_frames=TARGET_FRAMES, target_freq=TARGET_FREQ):
     pad_time = max(0, target_frames - time)
     pad_freq = max(0, target_freq - freq)
     
-    # Pad with 0 (which is silence in normalized [0,1] space, i.e. -80dB)
+    # Pad with 0 (which is silence in normalized [0,1] space, i.e. DB_MINdB)
     if spec.dim() == 2:
         spec_padded = F.pad(spec, (0, pad_time, 0, pad_freq), mode='constant', value=0)
     else:
