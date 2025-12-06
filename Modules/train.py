@@ -356,7 +356,7 @@ if __name__ == '__main__':
         batch_size=32,
         learning_rate=3e-4,
         device='cuda',
-        checkpoint_dir='/scratch/egbueze.m/checkpoints_mask60',
+        checkpoint_dir='/scratch/egbueze.m/checkpoints_db120',
         save_every=2,
         accumulation_steps=2,
         use_amp=True,
