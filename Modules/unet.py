@@ -41,13 +41,13 @@ class UNet(nn.Module):
             nn.Sigmoid()
         )
         
-        # Mask output head
-        self.mask_out = nn.Sequential(
-            nn.Conv2d(features[0], 32, 3, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(32, out_channels, 1),
-            nn.Sigmoid()
-        )
+        # # Mask output head
+        # self.mask_out = nn.Sequential(
+        #     nn.Conv2d(features[0], 32, 3, padding=1),
+        #     nn.LeakyReLU(0.2, inplace=True),
+        #     nn.Conv2d(32, out_channels, 1),
+        #     nn.Sigmoid()
+        # )
     
     def _double_conv(self, in_channels, out_channels):
         return nn.Sequential(
@@ -88,8 +88,9 @@ class UNet(nn.Module):
         
         # Two heads
         spec = self.spec_out(dec1)
-        mask = self.mask_out(dec1)
+        # mask = self.mask_out(dec1)
         
-        if return_mask:
-            return spec * mask, mask
-        return spec * mask
+        # if return_mask:
+        #     return spec * mask, mask
+        # return spec * mask
+        return spec
