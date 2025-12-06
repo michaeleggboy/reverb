@@ -326,7 +326,7 @@ def train_model(
 
 if __name__ == '__main__':
     # Check if pre-computed specs exist
-    spec_dir = Path('/scratch/egbueze.m/precomputed_specs_db60')
+    spec_dir = Path('/scratch/egbueze.m/precomputed_specs_db120')
     
     if not spec_dir.exists() or len(list(spec_dir.glob('*.pt'))) == 0:
         print("❌ No pre-computed spectrograms found!")
