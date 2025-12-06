@@ -402,18 +402,18 @@ if __name__ == '__main__':
     
     # 2. Check spectrogram differences
     spec_stats = check_spectrogram_difference(
-        spec_dir='/scratch/egbueze.m/precomputed_specs_db',
+        spec_dir='/scratch/egbueze.m/precomputed_specs_db120',
         num_samples=50
     )
     
     # 3. Load and diagnose model
     model = UNet(in_channels=1, out_channels=1).to('cuda')
-    checkpoint = torch.load('/scratch/egbueze.m/checkpoints_mask/best_model.pth')
+    checkpoint = torch.load('/scratch/egbueze.m/checkpoints_db120/best_model.pth')
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     
     # 4. Model diagnosis
-    val_dataset = PrecomputedDataset('/scratch/egbueze.m/precomputed_specs_db')
+    val_dataset = PrecomputedDataset('/scratch/egbueze.m/precomputed_specs_db120')
     val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
     
     diagnostics = diagnose_model_output(model, val_loader)
