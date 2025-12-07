@@ -2,6 +2,26 @@ import torch
 from torch import nn
 
 
+class SelfAttention(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.query = nn.Conv2d(channels, channels // 8, 1)
+        self.key = nn.Conv2d(channels, channels // 8, 1)
+        self.value = nn.Conv2d(channels, channels, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+    
+    def forward(self, x):
+        B, C, H, W = x.shape
+        q = self.query(x).view(B, -1, H * W).permute(0, 2, 1)
+        k = self.key(x).view(B, -1, H * W)
+        v = self.value(x).view(B, -1, H * W)
+        
+        attn = torch.softmax(torch.bmm(q, k) / (C ** 0.5), dim=-1)
+        out = torch.bmm(v, attn.permute(0, 2, 1)).view(B, C, H, W)
+        
+        return self.gamma * out + x
+
+
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, features=[64, 128, 256, 512]):
         super().__init__()
@@ -21,6 +41,7 @@ class UNet(nn.Module):
         
         # Bottleneck
         self.bottleneck = self._double_conv(features[3], features[3] * 2)
+        self.attention = SelfAttention(features[3] * 2)
         
         # Decoder (upsampling path)
         self.upconv4 = nn.ConvTranspose2d(features[3] * 2, features[3], 2, 2)
@@ -68,7 +89,8 @@ class UNet(nn.Module):
         
         # Bottleneck
         bottleneck = self.bottleneck(self.pool4(enc4))
-        
+        bottleneck = self.attention(bottleneck)
+
         # Decoder
         dec4 = self.upconv4(bottleneck)
         dec4 = torch.cat([dec4, enc4], dim=1)
@@ -93,4 +115,4 @@ class UNet(nn.Module):
         # if return_mask:
         #     return spec * mask, mask
         # return spec * mask
-        return spec
+        return torch.clamp(x - spec, 0, 1) # residual difference
