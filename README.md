@@ -81,3 +81,8 @@ dereverb_audio(
 - STFT: n_fft=2048, hop_length=512, Hann window
 - Phase preservation from original audio
 - db max reference magnitude rescaling
+
+## Model
+
+[-80, 0] dB scaling model (Model/best_model_80db.pth) - 0.0912 (epoch 30)
+[-120, 0] db scaling model (Model/best_model_12-db.pth) - 0.0604 (epoch 17)
