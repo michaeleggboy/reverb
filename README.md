@@ -75,7 +75,7 @@ dereverb_audio(
 - Encoder: 4 downsampling blocks (64→128→256→512 features)
 - Bottleneck: 1024 features
 - Decoder: 4 upsampling blocks with skip connections
-- Output: Clean magnitude with Hardtanh activation
+- Output: Clean magnitude with Sigmoid activation
 
 **Audio Processing:**
 - STFT: n_fft=2048, hop_length=512, Hann window
