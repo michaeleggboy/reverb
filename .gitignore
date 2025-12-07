@@ -4,3 +4,4 @@ Modules/model_analysis.png
 Modules/*.txt
 Modules/*.wav
 Modules/*.flac
+*.pth
