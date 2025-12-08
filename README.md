@@ -92,11 +92,11 @@ best_model_80db.pth:
  - val loss: 0.0912 (epoch 30)
 
 best_model_120db.pth:
- - [-120, 0] db scaling model
+ - [-120, 0] dB scaling model
  - direct output
  - val loss: 0.0604 (epoch 17)
 
 best_model_120db_residual.pth:
- - [-120, 0] db scaling model
+ - [-120, 0] dB scaling model
  - residual output + attention
- - val loss: 0.0841 (epoch 19)
+ - val loss: 0.0840 (epoch 21)
