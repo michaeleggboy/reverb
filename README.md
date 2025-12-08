@@ -84,6 +84,16 @@ dereverb_audio(
 
 ## Model
 
-[-80, 0] dB scaling model (best_model_80db.pth) - 0.0912 (epoch 30)
+best_model_80db.pth:
+ + [-80, 0] dB scaling model
+ + val loss: 0.0912 (epoch 30)
 
-[-120, 0] db scaling model (best_model_120db.pth) - 0.0604 (epoch 17)
+best_model_120db.pth:
+ + [-120, 0] db scaling model
+ + val loss: 0.0604 (epoch 17)
+
+best_model_120db_residual.pth:
+ + [-120, 0] db scaling model
+ + attention
+ + residual
+ + val loss:
