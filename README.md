@@ -99,4 +99,4 @@ best_model_120db.pth:
 best_model_120db_residual.pth:
  - [-120, 0] dB scaling model
  - residual output + attention
- - val loss: 0.0840 (epoch 21)
+ - val loss: 0.0836 (epoch 26)
