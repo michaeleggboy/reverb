@@ -76,6 +76,8 @@ dereverb_audio(
 - Bottleneck: 1024 features
 - Decoder: 4 upsampling blocks with skip connections
 - Output: Clean magnitude with Sigmoid activation
+    + Mask
+    + Residual + Attention
 
 **Audio Processing:**
 - STFT: n_fft=2048, hop_length=512, Hann window
@@ -85,16 +87,16 @@ dereverb_audio(
 ## Model
 
 best_model_80db.pth:
- + [-80, 0] dB scaling model
- + direct output
- + val loss: 0.0912 (epoch 30)
+ - [-80, 0] dB scaling model
+ - direct output
+ - val loss: 0.0912 (epoch 30)
 
 best_model_120db.pth:
- + [-120, 0] db scaling model
- + direct output
- + val loss: 0.0604 (epoch 17)
+ - [-120, 0] db scaling model
+ - direct output
+ - val loss: 0.0604 (epoch 17)
 
 best_model_120db_residual.pth:
- + [-120, 0] db scaling model
- + residual output + attention
- + val loss:
+ - [-120, 0] db scaling model
+ - residual output + attention
+ - val loss: 0.0841 (epoch 19)
